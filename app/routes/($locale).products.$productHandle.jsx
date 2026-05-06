@@ -74,18 +74,18 @@ async function loadCriticalData({params, request, context}) {
   }
 
   const recommended = getRecommendedProducts(context.storefront, product.id);
-  const selectedVariant = product.selectedOrFirstAvailableVariant ?? {};
-  const variants = getAdjacentAndFirstAvailableVariants(product);
+
+  // Fallback to the first variant if no variant is selected
+  const selectedVariant = product.selectedVariant || product.variants.nodes[0];
 
   const seo = seoPayload.product({
-    product: {...product, variants},
+    product: {...product, selectedVariant}, // Pass selectedVariant directly
     selectedVariant,
     url: request.url,
   });
 
   return {
     product,
-    variants,
     shop,
     storeDomain: shop.primaryDomain.url,
     recommended,
@@ -115,19 +115,50 @@ export const meta = ({matches}) => {
 
 export default function Product() {
   /** @type {LoaderReturnData} */
-  const {product, shop, recommended, variants, storeDomain} = useLoaderData();
-  const {media, title, vendor, descriptionHtml} = product;
+  const {product, shop, recommended, storeDomain} = useLoaderData();
+  const {media, title, vendor, descriptionHtml, selectedVariant, options} = product;
   const {shippingPolicy, refundPolicy} = shop;
 
-  // Optimistically selects a variant with given available variant information
-  const selectedVariant = useOptimisticVariant(
-    product.selectedOrFirstAvailableVariant,
-    variants,
-  );
+  // Get the product options array
+  const productOptions = getProductOptions({
+    ...product,
+    selectedOrFirstAvailableVariant: selectedVariant,
+  });
 
-  // Sets the search param to the selected variant without navigation
-  // only when no search params are set in the url
-  useSelectedOptionInUrlParam(selectedVariant.selectedOptions);
+  return {
+    product,
+    shop,
+    storeDomain: shop.primaryDomain.url,
+    recommended,
+    seo,
+  };
+}
+
+/**
+ * Load data for rendering content below the fold. This data is deferred and will be
+ * fetched after the initial page load. If it's unavailable, the page should still 200.
+ * Make sure to not throw any errors here, as it will cause the page to 500.
+ * @param {LoaderFunctionArgs} args
+ */
+function loadDeferredData(args) {
+  // Put any API calls that are not critical to be available on first page render
+  // For example: product reviews, product recommendations, social feeds.
+
+  return {};
+}
+
+/**
+ * @param {Class<loader>>}
+ */
+export const meta = ({matches}) => {
+  return getSeoMeta(...matches.map((match) => match.data.seo));
+};
+
+export default function Product() {
+  /** @type {LoaderReturnData} */
+  const {product, shop, recommended, storeDomain} = useLoaderData();
+  const {media, title, vendor, descriptionHtml, selectedVariant, options} = product;
+  const {shippingPolicy, refundPolicy} = shop;
 
   // Get the product options array
   const productOptions = getProductOptions({
@@ -476,12 +507,9 @@ const PRODUCT_VARIANT_FRAGMENT = `#graphql
   fragment ProductVariant on ProductVariant {
     id
     availableForSale
-    selectedOptions {
-      name
-      value
-    }
+    sku
+    title
     image {
-      id
       url
       altText
       width
@@ -495,15 +523,9 @@ const PRODUCT_VARIANT_FRAGMENT = `#graphql
       amount
       currencyCode
     }
-    sku
-    title
-    unitPrice {
-      amount
-      currencyCode
-    }
-    product {
-      title
-      handle
+    selectedOptions {
+      name
+      value
     }
   }
 `;
@@ -515,35 +537,19 @@ const PRODUCT_FRAGMENT = `#graphql
     vendor
     handle
     descriptionHtml
-    description
-    encodedVariantExistence
-    encodedVariantAvailability
     options {
       name
-      optionValues {
-        name
-        firstSelectableVariant {
-          ...ProductVariant
-        }
-        swatch {
-          color
-          image {
-            previewImage {
-              url
-            }
-          }
-        }
+      values
+    }
+    selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
+      ...ProductVariant
+    }
+    variants(first: 1) {
+      nodes {
+        id
+        title
+        availableForSale
       }
-    }
-    selectedOrFirstAvailableVariant(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
-      ...ProductVariant
-    }
-    adjacentVariants (selectedOptions: $selectedOptions) {
-      ...ProductVariant
-    }
-    seo {
-      description
-      title
     }
     media(first: 7) {
       nodes {

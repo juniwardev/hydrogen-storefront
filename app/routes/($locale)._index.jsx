@@ -6,7 +6,7 @@ import {getSeoMeta} from '@shopify/hydrogen';
 import {Hero} from '~/components/Hero';
 import {FeaturedCollections} from '~/components/FeaturedCollections';
 import {ProductSwimlane} from '~/components/ProductSwimlane';
-import {MEDIA_FRAGMENT, PRODUCT_CARD_FRAGMENT} from '~/data/fragments';
+import {MEDIA_FRAGMENT, PRODUCT_ITEM_FRAGMENT, PRODUCT_CARD_FRAGMENT} from '~/data/fragments';
 import {getHeroPlaceholder} from '~/lib/placeholders';
 import {seoPayload} from '~/lib/seo.server';
 import {routeHeaders} from '~/data/cache';
@@ -67,14 +67,10 @@ async function loadCriticalData({context, request}) {
 function loadDeferredData({context}) {
   const {language, country} = context.storefront.i18n;
 
-  const featuredProducts = context.storefront
-    .query(HOMEPAGE_FEATURED_PRODUCTS_QUERY, {
+  const featuredCollectionData = context.storefront
+    .query(HOMEPAGE_FEATURED_COLLECTION_QUERY, {
       variables: {
-        /**
-         * Country and language properties are automatically injected
-         * into all queries. Passing them is unnecessary unless you
-         * want to override them from the following default:
-         */
+        handle: 'featured', // Standard handle for featured products
         country,
         language,
       },
@@ -152,7 +148,7 @@ export default function Homepage() {
     secondaryHero,
     tertiaryHero,
     featuredCollections,
-    featuredProducts,
+    featuredCollectionData,
   } = useLoaderData();
 
   // TODO: skeletons vs placeholders
@@ -164,21 +160,22 @@ export default function Homepage() {
         <Hero {...primaryHero} height="full" top loading="eager" />
       )}
 
-      {featuredProducts && (
+      {featuredCollectionData && (
         <Suspense>
-          <Await resolve={featuredProducts}>
+          <Await resolve={featuredCollectionData}>
             {(response) => {
               if (
                 !response ||
-                !response?.products ||
-                !response?.products?.nodes
+                !response?.featuredCollection ||
+                !response?.featuredCollection?.products ||
+                !response?.featuredCollection?.products?.nodes
               ) {
                 return <></>;
               }
               return (
                 <ProductSwimlane
-                  products={response.products}
-                  title="Featured Products"
+                  products={response.featuredCollection.products}
+                  title={response.featuredCollection.title}
                   count={4}
                 />
               );
@@ -292,16 +289,22 @@ const COLLECTION_HERO_QUERY = `#graphql
 `;
 
 // @see: https://shopify.dev/api/storefront/current/queries/products
-export const HOMEPAGE_FEATURED_PRODUCTS_QUERY = `#graphql
-  query homepageFeaturedProducts($country: CountryCode, $language: LanguageCode)
+export const HOMEPAGE_FEATURED_COLLECTION_QUERY = `#graphql
+  query FeaturedCollection($handle: String!, $country: CountryCode, $language: LanguageCode)
   @inContext(country: $country, language: $language) {
-    products(first: 8) {
-      nodes {
-        ...ProductCard
+    featuredCollection: collection(handle: $handle) {
+      id
+      title
+      handle
+      description
+      products(first: 8) {
+        nodes {
+          ...ProductItem
+        }
       }
     }
   }
-  ${PRODUCT_CARD_FRAGMENT}
+  ${PRODUCT_ITEM_FRAGMENT}
 `;
 
 // @see: https://shopify.dev/api/storefront/current/queries/collections
