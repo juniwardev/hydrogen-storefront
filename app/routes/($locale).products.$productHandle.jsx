@@ -503,11 +503,9 @@ const PRODUCT_FRAGMENT = `#graphql
     selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
       ...ProductVariant
     }
-    variants(first: 1) {
+    variants(first: 250) { 
       nodes {
-        id
-        title
-        availableForSale
+        ...ProductVariant
       }
     }
     media(first: 7) {
