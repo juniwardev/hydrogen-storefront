@@ -79,7 +79,7 @@ async function loadCriticalData({params, request, context}) {
   const selectedVariant = product.selectedVariant || product.variants.nodes[0];
 
   const seo = seoPayload.product({
-    product: {...product, selectedVariant}, // Pass selectedVariant directly
+    product: {...product, selectedVariant, variants: product.variants.nodes},
     selectedVariant,
     url: request.url,
   });

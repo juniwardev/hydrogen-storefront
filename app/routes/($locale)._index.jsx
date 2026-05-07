@@ -127,7 +127,7 @@ function loadDeferredData({context}) {
     });
 
   return {
-    featuredProducts,
+    featuredCollectionData,
     secondaryHero,
     featuredCollections,
     tertiaryHero,
