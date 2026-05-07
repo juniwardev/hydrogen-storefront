@@ -125,47 +125,6 @@ export default function Product() {
     selectedOrFirstAvailableVariant: selectedVariant,
   });
 
-  return {
-    product,
-    shop,
-    storeDomain: shop.primaryDomain.url,
-    recommended,
-    seo,
-  };
-}
-
-/**
- * Load data for rendering content below the fold. This data is deferred and will be
- * fetched after the initial page load. If it's unavailable, the page should still 200.
- * Make sure to not throw any errors here, as it will cause the page to 500.
- * @param {LoaderFunctionArgs} args
- */
-function loadDeferredData(args) {
-  // Put any API calls that are not critical to be available on first page render
-  // For example: product reviews, product recommendations, social feeds.
-
-  return {};
-}
-
-/**
- * @param {Class<loader>>}
- */
-export const meta = ({matches}) => {
-  return getSeoMeta(...matches.map((match) => match.data.seo));
-};
-
-export default function Product() {
-  /** @type {LoaderReturnData} */
-  const {product, shop, recommended, storeDomain} = useLoaderData();
-  const {media, title, vendor, descriptionHtml, selectedVariant, options} = product;
-  const {shippingPolicy, refundPolicy} = shop;
-
-  // Get the product options array
-  const productOptions = getProductOptions({
-    ...product,
-    selectedOrFirstAvailableVariant: selectedVariant,
-  });
-
   return (
     <>
       <Section className="px-0 md:px-8 lg:px-12">
