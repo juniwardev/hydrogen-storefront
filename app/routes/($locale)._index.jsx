@@ -70,7 +70,7 @@ function loadDeferredData({context}) {
   const featuredCollectionData = context.storefront
     .query(HOMEPAGE_FEATURED_COLLECTION_QUERY, {
       variables: {
-        handle: 'featured', // Standard handle for featured products
+        handle: 'frontpage', // Use 'frontpage' as per backend configuration
         country,
         language,
       },
