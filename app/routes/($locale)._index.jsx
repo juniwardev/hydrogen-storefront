@@ -299,12 +299,12 @@ export const HOMEPAGE_FEATURED_COLLECTION_QUERY = `#graphql
       description
       products(first: 8) {
         nodes {
-          ...ProductItem
+          ...ProductCard
         }
       }
     }
   }
-  ${PRODUCT_ITEM_FRAGMENT}
+  ${PRODUCT_CARD_FRAGMENT}
 `;
 
 // @see: https://shopify.dev/api/storefront/current/queries/collections
