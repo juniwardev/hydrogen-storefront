@@ -223,3 +223,15 @@ export async function loader({params, request, context}: LoaderFunctionArgs) {
 2. **Fragments:** Use GraphQL fragments for repetitive structures like Money and Image objects.
 3. **Context:** Always include `@inContext(country: $country, language: $language)` to support localization and internationalization.
 4. **Error Handling:** Loaders must explicitly check for the existence of the returned resource and throw a 404 Response if not found.
+
+---
+
+## Strict Data Contract Rules & Lessons Learned
+
+During recent debugging and development sessions, several critical data contract rules have emerged as mandatory for all future development. Adhering to these guidelines will prevent common runtime errors and ensure consistent data integrity across the storefront.
+
+1.  **SEO Variant Data:** Every product variant GraphQL query MUST explicitly request `selectedOptions { name value }`. Failure to include these fields will result in a `500` runtime error (`TypeError: variant.selectedOptions is not iterable`) when processed by the Hydrogen `seoPayload` utility.
+
+2.  **Image Payloads:** Every GraphQL query fetching product lists (e.g., for collections, featured products, or recommended products) MUST explicitly request `featuredImage { id altText url width height }` or the equivalent variant image fields. If these image payload fields are omitted, the UI will silently render broken or missing image tags, negatively impacting user experience.
+
+3.  **Collection Handles:** Developers must NEVER assume default boilerplate collection handles (such as 'featured' or 'all'). Always verify the correct collection handle against the actual Shopify Admin environment. For instance, the homepage featured collection might explicitly require querying with `handle: 'frontpage'`. Assuming an incorrect handle will lead to blank sections or incorrect product displays.
