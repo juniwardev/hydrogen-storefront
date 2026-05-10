@@ -11,6 +11,19 @@ import {getHeroPlaceholder} from '~/lib/placeholders';
 import {seoPayload} from '~/lib/seo.server';
 import {routeHeaders} from '~/data/cache';
 
+/**
+ * @const
+ * @summary Configuration for homepage collection handles.
+ * This object centralizes the collection handles used throughout the homepage
+ * to adhere to the 'Zero Hardcoding' directive.
+ */
+const HOMEPAGE_CONFIG = {
+  mainHeroHandle: 'frontpage',
+  featuredCollectionHandle: 'frontpage',
+  secondaryHeroHandle: 'backcountry',
+  tertiaryHeroHandle: 'winter-2022',
+};
+
 export const headers = routeHeaders;
 
 /**
@@ -46,7 +59,7 @@ export async function loader(args) {
 async function loadCriticalData({context, request}) {
   const [{shop, hero}] = await Promise.all([
     context.storefront.query(HOMEPAGE_SEO_QUERY, {
-      variables: {handle: 'freestyle'},
+      variables: {handle: HOMEPAGE_CONFIG.mainHeroHandle},
     }),
     // Add other queries here, so that they are loaded in parallel
   ]);
@@ -70,7 +83,7 @@ function loadDeferredData({context}) {
   const featuredCollectionData = context.storefront
     .query(HOMEPAGE_FEATURED_COLLECTION_QUERY, {
       variables: {
-        handle: 'frontpage', // Use 'frontpage' as per backend configuration
+        handle: HOMEPAGE_CONFIG.featuredCollectionHandle,
         country,
         language,
       },
@@ -85,7 +98,7 @@ function loadDeferredData({context}) {
   const secondaryHero = context.storefront
     .query(COLLECTION_HERO_QUERY, {
       variables: {
-        handle: 'backcountry',
+        handle: HOMEPAGE_CONFIG.secondaryHeroHandle,
         country,
         language,
       },
@@ -114,7 +127,7 @@ function loadDeferredData({context}) {
   const tertiaryHero = context.storefront
     .query(COLLECTION_HERO_QUERY, {
       variables: {
-        handle: 'winter-2022',
+        handle: HOMEPAGE_CONFIG.tertiaryHeroHandle,
         country,
         language,
       },
@@ -138,7 +151,12 @@ function loadDeferredData({context}) {
  * @param {Class<loader>>}
  */
 export const meta = ({matches}) => {
-  return getSeoMeta(...matches.map((match) => match.data.seo));
+  const seoMatches = matches.map((match) => {
+    if (!match.data) return null;
+    if (!match.data.seo) return null;
+    return match.data.seo;
+  }).filter(Boolean);
+  return getSeoMeta(...seoMatches);
 };
 
 export default function Homepage() {
@@ -241,27 +259,16 @@ const COLLECTION_CONTENT_FRAGMENT = `#graphql
     handle
     title
     descriptionHtml
-    heading: metafield(namespace: "hero", key: "title") {
-      value
-    }
-    byline: metafield(namespace: "hero", key: "byline") {
-      value
-    }
-    cta: metafield(namespace: "hero", key: "cta") {
-      value
-    }
-    spread: metafield(namespace: "hero", key: "spread") {
-      reference {
-        ...Media
-      }
-    }
-    spreadSecondary: metafield(namespace: "hero", key: "spread_secondary") {
-      reference {
-        ...Media
-      }
+    description
+    image {
+      __typename
+      id
+      url
+      altText
+      width
+      height
     }
   }
-  ${MEDIA_FRAGMENT}
 `;
 
 const HOMEPAGE_SEO_QUERY = `#graphql
@@ -333,3 +340,4 @@ export const FEATURED_COLLECTIONS_QUERY = `#graphql
 /** @typedef {import('@shopify/remix-oxygen').MetaArgs} MetaArgs */
 /** @typedef {import('@shopify/remix-oxygen').LoaderFunctionArgs} LoaderFunctionArgs */
 /** @typedef {ReturnType<typeof useLoaderData<typeof loader>>} LoaderReturnData */
+

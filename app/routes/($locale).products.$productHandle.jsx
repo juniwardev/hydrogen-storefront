@@ -4,6 +4,7 @@ import {defer} from '@shopify/remix-oxygen';
 import {useLoaderData, Await} from '@remix-run/react';
 import {
   getSeoMeta,
+  Image,
   Money,
   ShopPayButton,
   getSelectedProductOptions,
@@ -90,6 +91,7 @@ async function loadCriticalData({params, request, context}) {
     storeDomain: shop.primaryDomain.url,
     recommended,
     seo,
+    selectedVariant,
   };
 }
 
@@ -115,8 +117,8 @@ export const meta = ({matches}) => {
 
 export default function Product() {
   /** @type {LoaderReturnData} */
-  const {product, shop, recommended, storeDomain} = useLoaderData();
-  const {media, title, vendor, descriptionHtml, selectedVariant, options} = product;
+  const {product, shop, recommended, storeDomain, selectedVariant} = useLoaderData();
+  const {media, title, vendor, descriptionHtml, options} = product;
   const {shippingPolicy, refundPolicy} = shop;
 
   // Get the product options array
@@ -396,7 +398,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
  * }}
  */
 function ProductOptionSwatch({swatch, name}) {
-  const image = swatch?.image?.previewImage?.url;
+  const image = swatch?.image?.previewImage;
   const color = swatch?.color;
 
   if (!image && !color) return name;
@@ -409,7 +411,15 @@ function ProductOptionSwatch({swatch, name}) {
         backgroundColor: color || 'transparent',
       }}
     >
-      {!!image && <img src={image} alt={name} />}
+      {!!image && (
+        <Image
+          data={image}
+          aspectRatio="1/1"
+          width={32}
+          height={32}
+          alt={name}
+        />
+      )}
     </div>
   );
 }
@@ -469,6 +479,7 @@ const PRODUCT_VARIANT_FRAGMENT = `#graphql
     sku
     title
     image {
+      id
       url
       altText
       width
@@ -486,6 +497,9 @@ const PRODUCT_VARIANT_FRAGMENT = `#graphql
       name
       value
     }
+    product {
+      handle
+    }
   }
 `;
 
@@ -499,6 +513,21 @@ const PRODUCT_FRAGMENT = `#graphql
     options {
       name
       values
+      optionValues {
+        name
+        swatch {
+          color
+          image {
+            previewImage {
+              id
+              url
+              altText
+              width
+              height
+            }
+          }
+        }
+      }
     }
     selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
       ...ProductVariant
@@ -526,6 +555,14 @@ const PRODUCT_QUERY = `#graphql
   ) @inContext(country: $country, language: $language) {
     product(handle: $handle) {
       ...Product
+      adjacentVariants {
+        ...ProductVariant
+        product {
+          handle
+        }
+      }
+      encodedVariantExistence
+      encodedVariantAvailability
     }
     shop {
       name

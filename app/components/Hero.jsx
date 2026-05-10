@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import {MediaFile} from '@shopify/hydrogen';
+import {Image} from '@shopify/hydrogen';
 import {Heading, Text} from '~/components/Text';
 import {Link} from '~/components/Link';
 
@@ -8,14 +8,13 @@ import {Link} from '~/components/Link';
  * @param {HeroProps}
  */
 export function Hero({
-  byline,
+  title,
+  description,
+  image,
   cta,
   handle,
-  heading,
   height,
   loading,
-  spread,
-  spreadSecondary,
   top,
 }) {
   return (
@@ -30,38 +29,25 @@ export function Hero({
         )}
       >
         <div className="absolute inset-0 grid flex-grow grid-flow-col pointer-events-none auto-cols-fr -z-10 content-stretch overflow-clip">
-          {spread?.reference && (
+          {image && (
             <div>
               <SpreadMedia
-                sizes={
-                  spreadSecondary?.reference
-                    ? '(min-width: 48em) 50vw, 100vw'
-                    : '100vw'
-                }
-                data={spread.reference}
-                loading={loading}
-              />
-            </div>
-          )}
-          {spreadSecondary?.reference && (
-            <div className="hidden md:block">
-              <SpreadMedia
-                sizes="50vw"
-                data={spreadSecondary.reference}
+                sizes="100vw"
+                data={image}
                 loading={loading}
               />
             </div>
           )}
         </div>
         <div className="flex flex-col items-baseline justify-between gap-4 px-6 py-8 sm:px-8 md:px-12 bg-gradient-to-t dark:from-contrast/60 dark:text-primary from-primary/60 text-contrast">
-          {heading?.value && (
+          {title && (
             <Heading format as="h2" size="display" className="max-w-md">
-              {heading.value}
+              {title}
             </Heading>
           )}
-          {byline?.value && (
+          {description && (
             <Text format width="narrow" as="p" size="lead">
-              {byline.value}
+              {description}
             </Text>
           )}
           {cta?.value && <Text size="lead">{cta.value}</Text>}
@@ -76,31 +62,18 @@ export function Hero({
  */
 function SpreadMedia({data, loading, sizes}) {
   return (
-    <MediaFile
+    <Image
       data={data}
       className="block object-cover w-full h-full"
-      mediaOptions={{
-        video: {
-          controls: false,
-          muted: true,
-          loop: true,
-          playsInline: true,
-          autoPlay: true,
-          previewImageOptions: {src: data.previewImage?.url ?? ''},
-        },
-        image: {
-          loading,
-          crop: 'center',
-          sizes,
-          alt: data.alt || '',
-        },
-      }}
+      loading={loading}
+      sizes={sizes}
+      alt={data.altText || data.alt || ''}
     />
   );
 }
 
 /**
- * @typedef {CollectionContentFragment & {
+ * @typedef {{
  *   height?: 'full';
  *   top?: boolean;
  *   loading?: HTMLImageElement['loading'];
@@ -108,13 +81,12 @@ function SpreadMedia({data, loading, sizes}) {
  */
 /**
  * @typedef {{
- *   data: Media | MediaImage | MediaVideo;
+ *   data: Image;
  *   loading?: HTMLImageElement['loading'];
  *   sizes: string;
  * }} SpreadMediaProps
  */
 
-/** @typedef {import('@shopify/hydrogen/storefront-api-types').MediaImage} MediaImage */
+/** @typedef {import('@shopify/hydrogen/storefront-api-types').Image} Image */
 /** @typedef {import('@shopify/hydrogen/storefront-api-types').Media} Media */
 /** @typedef {import('@shopify/hydrogen/storefront-api-types').Video} Video */
-/** @typedef {import('storefrontapi.generated').CollectionContentFragment} CollectionContentFragment */
