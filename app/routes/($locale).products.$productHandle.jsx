@@ -230,11 +230,14 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
             key={option.name}
             className="product-options flex flex-col flex-wrap mb-4 gap-y-2 last:mb-0"
           >
-            <Heading as="legend" size="lead" className="min-w-[4rem]">
-              {option.name}
-            </Heading>
+              {productOptions.length > 1 || option.optionValues.length > 1 ? (
+                <Heading as="legend" size="lead" className="min-w-[4rem]">
+                  {option.name}
+                </Heading>
+              ) : null}
             <div className="flex flex-wrap items-baseline gap-4">
-              {option.optionValues.length > 7 ? (
+              {productOptions.length > 1 || option.optionValues.length > 1 ? (
+                option.optionValues.length > 7 ? (
                 <div className="relative w-full">
                   <Listbox>
                     {({open}) => (
@@ -333,8 +336,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                       <ProductOptionSwatch swatch={swatch} name={name} />
                     </Link>
                   ),
-                )
-              )}
+                ) : null}
             </div>
           </div>
         ))}
