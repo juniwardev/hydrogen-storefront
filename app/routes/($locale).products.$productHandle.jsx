@@ -336,7 +336,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                       <ProductOptionSwatch swatch={swatch} name={name} />
                     </Link>
                   ),
-                ) : null}
+                 )
             </div>
           </div>
         ))}
@@ -582,6 +582,8 @@ const PRODUCT_QUERY = `#graphql
     }
   }
   ${MEDIA_FRAGMENT}
+  ${PRODUCT_FRAGMENT}
+  ${PRODUCT_VARIANT_FRAGMENT}
 
 `;
 
