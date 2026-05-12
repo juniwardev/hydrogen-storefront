@@ -234,7 +234,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                 <Heading as="legend" size="lead" className="min-w-[4rem]">
                   {option.name}
                 </Heading>
-              ) : null}
+                  )) : null}
             <div className="flex flex-wrap items-baseline gap-4">
               {productOptions.length > 1 || option.optionValues.length > 1 ? (
                 option.optionValues.length > 7 ? (
