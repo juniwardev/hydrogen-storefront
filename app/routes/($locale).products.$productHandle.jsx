@@ -582,7 +582,7 @@ const PRODUCT_QUERY = `#graphql
     }
   }
   ${MEDIA_FRAGMENT}
-  ${PRODUCT_FRAGMENT}
+
 `;
 
 const RECOMMENDED_PRODUCTS_QUERY = `#graphql
