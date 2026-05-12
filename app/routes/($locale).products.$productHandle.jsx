@@ -230,165 +230,113 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
             key={option.name}
             className="product-options flex flex-col flex-wrap mb-4 gap-y-2 last:mb-0"
           >
-              {productOptions.length > 1 || option.optionValues.length > 1 ? (
-                <Heading as="legend" size="lead" className="min-w-[4rem]">
-                  {option.name}
-                </Heading>
-                  )) : null}
+            {productOptions.length > 1 || option.optionValues.length > 1 ? (
+              <Heading as="legend" size="lead" className="min-w-[4rem]">
+                {option.name}
+              </Heading>
+            ) : null}
             <div className="flex flex-wrap items-baseline gap-4">
               {productOptions.length > 1 || option.optionValues.length > 1 ? (
                 option.optionValues.length > 7 ? (
-                <div className="relative w-full">
-                  <Listbox>
-                    {({open}) => (
-                      <>
-                        <Listbox.Button
-                          ref={closeRef}
-                          className={clsx(
-                            'flex items-center justify-between w-full py-3 px-4 border border-primary',
-                            open
-                              ? 'rounded-b md:rounded-t md:rounded-b-none'
-                              : 'rounded',
-                          )}
-                        >
-                          <span>
-                            {
-                              selectedVariant?.selectedOptions[optionIndex]
-                                .value
-                            }
-                          </span>
-                          <IconCaret direction={open ? 'up' : 'down'} />
-                        </Listbox.Button>
-                        <Listbox.Options
-                          className={clsx(
-                            'border-primary bg-contrast absolute bottom-12 z-30 grid h-48 w-full overflow-y-scroll rounded-t border px-2 py-2 transition-[max-height] duration-150 sm:bottom-auto md:rounded-b md:rounded-t-none md:border-t-0 md:border-b',
-                            open ? 'max-h-48' : 'max-h-0',
-                          )}
-                        >
-                          {option.optionValues
-                            .filter((value) => value.available)
-                            .map(
-                              ({
-                                isDifferentProduct,
-                                name,
-                                variantUriQuery,
-                                handle,
-                                selected,
-                              }) => (
-                                <Listbox.Option
-                                  key={`option-${option.name}-${name}`}
-                                  value={name}
-                                >
-                                  <Link
-                                    {...(!isDifferentProduct
-                                      ? {rel: 'nofollow'}
-                                      : {})}
-                                    to={`/products/${handle}?${variantUriQuery}`}
-                                    preventScrollReset
-                                    className={clsx(
-                                      'text-primary w-full p-2 transition rounded flex justify-start items-center text-left cursor-pointer',
-                                      selected && 'bg-primary/10',
-                                    )}
-                                    onClick={() => {
-                                      if (!closeRef?.current) return;
-                                      closeRef.current.click();
-                                    }}
-                                  >
-                                    {name}
-                                    {selected && (
-                                      <span className="ml-2">
-                                        <IconCheck />
-                                      </span>
-                                    )}
-                                  </Link>
-                                </Listbox.Option>
-                              ),
+                  <div className="relative w-full">
+                    <Listbox>
+                      {({open}) => (
+                        <>
+                          <Listbox.Button
+                            ref={closeRef}
+                            className={clsx(
+                              'flex items-center justify-between w-full py-3 px-4 border border-primary',
+                              open
+                                ? 'rounded-b md:rounded-t md:rounded-b-none'
+                                : 'rounded',
                             )}
-                        </Listbox.Options>
-                      </>
-                    )}
-                  </Listbox>
-                </div>
-              ) : (
-                option.optionValues.map(
-                  ({
-                    isDifferentProduct,
-                    name,
-                    variantUriQuery,
-                    handle,
-                    selected,
-                    available,
-                    swatch,
-                  }) => (
+                          >
+                            <span>
+                              {selectedVariant?.selectedOptions[optionIndex].value}
+                            </span>
+                            <IconCaret direction={open ? 'up' : 'down'} />
+                          </Listbox.Button>
+                          <Listbox.Options
+                            className={clsx(
+                              'border-primary bg-contrast absolute bottom-12 z-30 grid h-48 w-full overflow-y-scroll rounded-t border px-2 py-2 transition-[max-height] duration-150 sm:bottom-auto md:rounded-b md:rounded-t-none md:border-t-0 md:border-b',
+                              open ? 'max-h-48' : 'max-h-0',
+                            )}
+                          >
+                            {option.optionValues
+                              .filter((value) => value.available)
+                              .map((value) => (
+                                <Listbox.Option
+                                  key={`option-${option.name}-${value.name}`}
+                                  value={value.name}
+                                >
+                                  {({active}) => (
+                                    <Link
+                                      to={value.variantUriQuery}
+                                      preventScrollReset
+                                      prefetch="intent"
+                                      className={clsx(
+                                        'text-left w-full py-2 px-4 transition-colors',
+                                        active ? 'bg-primary text-contrast' : 'text-primary',
+                                      )}
+                                      onClick={() => {
+                                        if (closeRef.current) closeRef.current.click();
+                                      }}
+                                    >
+                                      {value.name}
+                                    </Link>
+                                  )}
+                                </Listbox.Option>
+                              ))}
+                          </Listbox.Options>
+                        </>
+                      )}
+                    </Listbox>
+                  </div>
+                ) : (
+                  option.optionValues.map(({name, variantUriQuery, selected, swatch}) => (
                     <Link
-                      key={option.name + name}
-                      {...(!isDifferentProduct ? {rel: 'nofollow'} : {})}
-                      to={`/products/${handle}?${variantUriQuery}`}
-                      preventScrollReset
+                      key={name}
+                      to={variantUriQuery}
+                      preserveControl
                       prefetch="intent"
-                      replace
+                      preventScrollReset
                       className={clsx(
                         'leading-none py-1 border-b-[1.5px] cursor-pointer transition-all duration-200',
-                        selected ? 'border-primary/50' : 'border-primary/0',
-                        available ? 'opacity-100' : 'opacity-50',
+                        selected ? 'border-primary/50' : 'border-transparent opacity-50',
                       )}
                     >
                       <ProductOptionSwatch swatch={swatch} name={name} />
                     </Link>
-                  ),
-                 )
+                  ))
+                )
+              ) : null}
             </div>
           </div>
         ))}
-        {selectedVariant && (
-          <div className="grid items-stretch gap-4">
-            {isOutOfStock ? (
-              <Button variant="secondary" disabled>
-                <Text>Sold out</Text>
-              </Button>
-            ) : (
-              <AddToCartButton
-                lines={[
-                  {
-                    merchandiseId: selectedVariant.id,
-                    quantity: 1,
-                  },
-                ]}
-                variant="primary"
-                data-test="add-to-cart"
-              >
-                <Text
-                  as="span"
-                  className="flex items-center justify-center gap-2"
-                >
-                  <span>Add to Cart</span> <span>·</span>{' '}
-                  <Money
-                    withoutTrailingZeros
-                    data={selectedVariant?.price}
-                    as="span"
-                    data-test="price"
-                  />
-                  {isOnSale && (
-                    <Money
-                      withoutTrailingZeros
-                      data={selectedVariant?.compareAtPrice}
-                      as="span"
-                      className="opacity-50 strike"
-                    />
-                  )}
-                </Text>
-              </AddToCartButton>
-            )}
-            {!isOutOfStock && (
-              <ShopPayButton
-                width="100%"
-                variantIds={[selectedVariant?.id]}
-                storeDomain={storeDomain}
-              />
-            )}
-          </div>
-        )}
       </div>
+      {selectedVariant && (
+        <div className="grid gap-4">
+          <AddToCartButton
+            disabled={isOutOfStock}
+            lines={[
+              {
+                merchandiseId: selectedVariant.id,
+                quantity: 1,
+              },
+            ]}
+            variant={isOutOfStock ? 'secondary' : 'primary'}
+            data-test="add-to-cart"
+          >
+            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+          </AddToCartButton>
+          {!isOutOfStock && (
+            <ShopPayButton
+              variantIds={[selectedVariant.id]}
+              storeDomain={storeDomain}
+            />
+          )}
+        </div>
+      )}
     </div>
   );
 }
