@@ -456,7 +456,42 @@ const PRODUCT_VARIANT_FRAGMENT = `#graphql
 const PRODUCT_FRAGMENT = `#graphql
   fragment Product on Product {
     id
+    title
+    vendor
     handle
+    descriptionHtml
+    options {
+      name
+      values
+      optionValues {
+        name
+        swatch {
+          color
+          image {
+            previewImage {
+              id
+              url
+              altText
+              width
+              height
+            }
+          }
+        }
+      }
+    }
+    selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions) {
+      ...ProductVariant
+    }
+    variants(first: 250) { 
+      nodes {
+        ...ProductVariant
+      }
+    }
+    media(first: 7) {
+      nodes {
+        ...Media
+      }
+    }
   }
   ${PRODUCT_VARIANT_FRAGMENT}
 `;
@@ -466,7 +501,6 @@ const PRODUCT_QUERY = `#graphql
     $country: CountryCode
     $language: LanguageCode
     $handle: String!
-    $selectedOptions: [SelectedOptionInput!]!
   ) @inContext(country: $country, language: $language) {
     product(handle: $handle) {
       ...Product

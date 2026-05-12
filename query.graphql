@@ -1,0 +1,66 @@
+query Product(
+    $country: CountryCode
+    $language: LanguageCode
+    $handle: String!
+    $selectedOptions: [SelectedOptionInput!]!
+  ) @inContext(country: $country, language: $language) {
+    product(handle: $handle) {
+      ...Product
+      adjacentVariants {
+        ...ProductVariant
+        product {
+          handle
+        }
+      }
+      encodedVariantExistence
+      encodedVariantAvailability
+    }
+    shop {
+      name
+      primaryDomain {
+        url
+      }
+      shippingPolicy {
+        body
+        handle
+      }
+      refundPolicy {
+        body
+        handle
+      }
+    }
+  }
+
+fragment ProductVariant on ProductVariant {
+    id
+    availableForSale
+    sku
+    title
+    image {
+      id
+      url
+      altText
+      width
+      height
+    }
+    price {
+      amount
+      currencyCode
+    }
+    compareAtPrice {
+      amount
+      currencyCode
+    }
+    selectedOptions {
+      name
+      value
+    }
+    product {
+      handle
+    }
+  }
+
+fragment Product on Product {
+    id
+    handle
+  }
