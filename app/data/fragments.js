@@ -75,12 +75,13 @@ export const PRODUCT_CARD_FRAGMENT = `#graphql
       nodes {
         id
         availableForSale
-        image {
-          url
-          altText
-          width
-          height
-        }
+          image {
+            id
+            url
+            altText
+            width
+            height
+          }
         price {
           amount
           currencyCode
