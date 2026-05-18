@@ -271,7 +271,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                                 >
                                   {({active}) => (
                                     <Link
-                                      to={value.variantUriQuery}
+                                      to={{search: value.variantUriQuery}}
                                       preventScrollReset
                                       prefetch="intent"
                                       className={clsx(
@@ -296,7 +296,7 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                   option.optionValues.map(({name, variantUriQuery, selected, swatch}) => (
                     <Link
                       key={name}
-                      to={variantUriQuery}
+                      to={{search: variantUriQuery}}
                       preserveControl
                       prefetch="intent"
                       preventScrollReset
