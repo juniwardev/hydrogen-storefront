@@ -501,6 +501,7 @@ const PRODUCT_QUERY = `#graphql
     $country: CountryCode
     $language: LanguageCode
     $handle: String!
+    $selectedOptions: [SelectedOptionInput!]!
   ) @inContext(country: $country, language: $language) {
     product(handle: $handle) {
       ...Product
@@ -530,8 +531,6 @@ const PRODUCT_QUERY = `#graphql
   }
   ${MEDIA_FRAGMENT}
   ${PRODUCT_FRAGMENT}
-  ${PRODUCT_VARIANT_FRAGMENT}
-
 `;
 
 const RECOMMENDED_PRODUCTS_QUERY = `#graphql
