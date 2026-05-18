@@ -145,6 +145,23 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
 
 ---
 
+## Required environment variables
+
+Local development requires the following variables in `.env` (or `.env.local`). These are loaded automatically into MiniOxygen during `npm run dev`:
+
+| Variable | Purpose |
+| :--- | :--- |
+| `SESSION_SECRET` | Encrypts session cookies. |
+| `PUBLIC_STOREFRONT_API_TOKEN` | Public access token for the Storefront API. |
+| `PUBLIC_STORE_DOMAIN` | The `myshopify.com` domain of the Shopify store. |
+| `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` | Client ID for the Customer Account API. |
+| `PUBLIC_CHECKOUT_DOMAIN` | The domain used for the checkout process. |
+| `SHOP_ID` | The unique identifier for the Shopify shop. |
+
+The `.env` and `.env.local` files are gitignored and contain secrets. Never commit them. Never edit them as part of a feature plan — environment changes are an operator concern.
+
+---
+
 ## Hydrogen architectural directives
 
 The remainder of this document preserves the original Hydrogen project directives. Read carefully before any code modification.
