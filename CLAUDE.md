@@ -9,10 +9,10 @@ This project uses the Claude Squad workflow. Agents at `~/.claude/agents/` and s
 ## Project type and stack
 
 - **Framework:** Shopify Hydrogen (Remix-based SSR React)
-- **Language:** TypeScript
+- **Language:** JavaScript (`.jsx`) with JSDoc annotations referencing generated TypeScript declarations (`storefrontapi.generated.d.ts`). Do NOT convert files to native TypeScript (`.tsx`) as drive-by work — that's a separate architectural decision.
 - **Storefront connection:** `theme-evolution-os2-hydrogen.myshopify.com` (separate dev store from the Liquid theme project at `theme-evolution-os2.myshopify.com`)
 - **Repo location:** `~/Projects/Shopify/hydrogen-storefront`
-- **State:** Greenfield — generated via `npm create @shopify/hydrogen@latest`
+- **State:** Greenfield-ish — generated via `npm create @shopify/hydrogen@latest`, with some early development already in place
 - **Deploy target:** Local development only for now (see "Deploy targets" section below)
 
 ---
@@ -27,17 +27,18 @@ npm run dev
 
 Dev server runs at `http://localhost:3000` by default.
 
-Useful commands:
+Available scripts (from `package.json`):
 
-- `npm run dev` — start Vite + MiniOxygen development server
-- `npm run build` — production build (TypeScript + Vite)
-- `npm run preview` — serve the production build locally for verification
-- `npm run typecheck` — run `tsc --noEmit` to verify TypeScript types
-- `npm run lint` — ESLint
-- `npm run codegen` — regenerate GraphQL types from the Storefront API schema
-- `npm run test` — run Vitest unit tests (if any exist)
+- `npm run dev` — start Hydrogen dev server (Vite + MiniOxygen). The `--codegen` flag auto-regenerates GraphQL types on schema changes.
+- `npm run build` — production build. Includes codegen pass. This is the effective type-validation step — there is no separate `typecheck` script.
+- `npm run preview` — runs `build`, then serves the production build locally for verification.
+- `npm run lint` — ESLint over `.js`, `.ts`, `.jsx`, `.tsx` files.
+- `npm run format` — Prettier auto-format all files.
+- `npm run format:check` — Prettier check without writing changes.
+- `npm run e2e` — Playwright end-to-end tests.
+- `npm run e2e:ui` — Playwright with UI mode for interactive debugging.
 
-If any of these commands don't match what `package.json` actually provides, update this section to reflect reality — the `package.json` is source of truth.
+If you find yourself wanting a script that doesn't exist (e.g., `typecheck`, `codegen`), check whether the existing scripts cover it (often they do — codegen is bundled into `dev`/`build`). Add new scripts only when there's a clear gap.
 
 ---
 
@@ -62,8 +63,8 @@ For local verification while developing:
 1. **HTTP smoke test:** `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000` → expect 200.
 2. **Browser check:** open `http://localhost:3000` in a browser. Confirm no React hydration warnings in the DevTools console.
 3. **Product page check:** navigate to a product. Confirm GraphQL data renders correctly (images load, prices show, no empty fields).
-4. **TypeScript check:** `npm run typecheck` returns clean.
-5. **Build check:** `npm run build` completes without errors.
+4. **Build check:** `npm run build` completes without errors. Hydrogen build includes codegen + type validation; passing build is the type-correctness signal.
+5. **Lint check:** `npm run lint` returns clean.
 
 These five checks form the baseline verification any feature or fix should pass before being marked complete.
 
@@ -82,7 +83,7 @@ touch docs/qa/<slug>.approved → operator sign-off
 /ship <slug>                 → not yet operational (no deploy target configured)
 ```
 
-For bug fixes, see `docs/process/bug-fix-workflow.md` (copy from the theme-evolution-os2 project once that file is in place). Slug convention for bug fixes: prefix with `fix-` (e.g., `fix-cart-drawer-overflow`).
+For bug fixes, see `docs/process/bug-fix-workflow.md`. Slug convention for bug fixes: prefix with `fix-` (e.g., `fix-cart-drawer-overflow`).
 
 Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `docs/qa/`. Each agent writes to its scoped subdirectory.
 
@@ -94,21 +95,22 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
 
 - Plans must respect the Hydrogen architectural directives at the bottom of this document.
 - When proposing GraphQL changes, account for the data contracts (root vs variant scope, complete image payloads, `selectedOptions` requirements).
-- Plans should specify which TypeScript types may need regeneration (`npm run codegen`) if the Storefront API schema is touched.
+- Plans should specify whether `npm run build` will need to regenerate types (any GraphQL fragment or query change triggers this automatically via the `--codegen` flag).
 
 ### Plan-Reviewer
 
 - Apply adversarial scrutiny on Hydrogen-specific concerns: Anti-Stubbing Rule, hydration safety, the Analytics Contract.
-- Demand that plans include TypeScript type considerations and `tsc --noEmit` as a verification step.
+- Demand that plans include `npm run build` as a verification step (this is the type-check + production-build gate; no separate `typecheck` exists).
 
 ### Coder
 
 - Use Shopify's `@shopify/hydrogen` helper components (`<Image>`, `<Link>`, `<Money>`, `<ProductProvider>`, `<Analytics.*>`) instead of plain HTML tags whenever possible.
 - All GraphQL queries must request complete image payloads (`id`, `url`, `altText`, `width`, `height`).
 - Follow the Anti-Stubbing Rule: never bypass TypeErrors by commenting out UI or stubbing data with empty values. Fix the underlying GraphQL fetch.
-- After meaningful changes, run in order: `npm run typecheck`, `npm run lint`, `npm run build`. All three must pass before declaring done.
+- After meaningful changes, run in order: `npm run lint`, `npm run build`. Both must pass before declaring done. The build step includes codegen and effectively validates types.
 - Pre-save audit: remove duplicate function exports (e.g., two `loader` functions in one route), conflicting variable declarations, and unused/unresolved imports.
-- TypeScript: use the generated types from `storefrontapi.generated.d.ts` and equivalents. Do not hand-write types the codegen would have produced.
+- JSDoc + TypeScript declarations: use `@type` and `@param` JSDoc annotations referencing types from `storefrontapi.generated.d.ts` (and equivalents) rather than hand-writing types. The generated declarations are the source of truth.
+- Files use the `.jsx` extension with JSDoc annotations, not native TypeScript `.tsx`. Do not convert files to `.tsx` as a drive-by improvement.
 
 ### QA
 
@@ -118,6 +120,7 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
   - Check DevTools console for React hydration warnings — these are bugs, not warnings to ignore.
   - Verify GraphQL data populates correctly (images load, prices show, no empty arrays where data should be).
   - Confirm `<Analytics.ProductView>` / `<Analytics.ItemView>` receive a valid `variantId` on product pages.
+- Project also has Playwright end-to-end tests at the codebase level: `npm run e2e` runs them. For feature verification, browser MCP testing is usually sufficient; reach for `npm run e2e` when you specifically need to update the long-running test suite.
 - See `docs/dev-fixtures.md` for test product handles and any setup notes.
 
 ### DevOps
@@ -134,11 +137,11 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
 
 ## What NOT to change
 
-- **Generated GraphQL types** (`storefrontapi.generated.d.ts`, `customer-accountapi.generated.d.ts`, etc.) — regenerate via `npm run codegen` instead of hand-editing.
+- **Generated GraphQL types** (`storefrontapi.generated.d.ts`, `customer-accountapi.generated.d.ts`, etc.) — regenerated automatically by `npm run dev` and `npm run build` (both use the `--codegen` flag). Do not hand-edit; if types need updating, run `npm run build` to refresh them.
 - **`package-lock.json`** — let npm manage it.
 - **Build artifacts** (`dist/`, `build/`, `.cache/`, `node_modules/`) — never commit, never edit.
 - **`.env` and `.env.local`** — these contain Storefront API tokens and other secrets. Never commit them; never edit them as part of a feature plan.
-- **Hydrogen framework files** (`server.js`, `entry.server.tsx`, `entry.client.tsx`) — modify only when the plan explicitly requires.
+- **Hydrogen framework files** (`server.js`, `entry.server.jsx`, `entry.client.jsx`) — modify only when the plan explicitly requires.
 
 ---
 
@@ -158,7 +161,7 @@ The remainder of this document preserves the original Hydrogen project directive
 │   ├── lib             # Utility functions, SEO setup, and generic helpers
 │   ├── routes          # Remix file-based routing and server-side loaders
 │   ├── styles          # Tailwind or standard CSS stylesheets
-│   └── entry.server.tsx# Server-side rendering entry point
+│   └── entry.server.jsx# Server-side rendering entry point
 ├── public              # Static assets (favicons, manifest)
 └── server.js           # MiniOxygen local development server entry
 ```
