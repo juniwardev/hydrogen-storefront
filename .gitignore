@@ -94,3 +94,15 @@ public/build/
 .shopify/
 .mf
 .react-router
+
+# QA fixtures — may contain credentials and local test setup
+docs/dev-fixtures.md
+
+# Squad workflow — operator sign-off markers
+docs/qa/*.approved
+
+# Claude Code per-developer settings
+.claude/settings.local.json
+
+# Playwright MCP runtime state
+.playwright-mcp/
