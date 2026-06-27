@@ -2,6 +2,10 @@ export const PAGINATION_SIZE = 8;
 export const DEFAULT_GRID_IMG_LOAD_EAGER_COUNT = 4;
 export const ATTR_LOADING_EAGER = 'eager';
 
+// AI shopping assistant constants
+export const ASSISTANT_RESULT_LIMIT = 8;
+export const MCP_TIMEOUT_MS = 10_000;
+
 export const SOCIAL_LINKS = [
   {platform: 'instagram', href: 'https://www.instagram.com/shopify', label: 'Instagram'},
   {platform: 'twitter-x', href: 'https://x.com/shopify', label: 'Twitter / X'},
