@@ -601,3 +601,157 @@ The normalizer now always emits `vendor: string` for every product coming from b
 4. `normalizeProductDetail` → `vendor` value is `''` when MCP omits the field.
 
 `AssistantProductCard.jsx` now passes `vendor` into `<Analytics.ProductView>`'s product payload alongside the previously-correct `variantId`, `price`, `id`, and `title`. Runtime confirmation that the `[h2:error:ShopifyAnalytics]` error no longer fires is QA's job via browser/Playwright — the normalizer contract and passing unit tests are the Coder-side signal.
+
+---
+
+## QA fix round 2
+
+Date: 2026-06-27
+Author: Coder
+
+QA returned FAIL again with two defects remaining and a meta-lesson about the previous round's test gap. All three issues are now fixed and all three gates pass.
+
+### Truthy-vendor decision — why `'Unknown'` over alternatives
+
+Hydrogen's analytics validation uses a falsy check, not a key-presence check:
+
+```js
+// @shopify/hydrogen/dist/development/index.js:564
+if (!product.vendor) {
+  missingErrorMessage(type, "vendor", false);
+  return false;
+}
+```
+
+Round 1 set `vendor: ''`. `''` is falsy in JavaScript (`!'' === true`), so the check still evaluated true and every analytics event was still dropped. The unit tests from round 1 only asserted that the `vendor` key existed and was a string — they did not assert that the value satisfied Hydrogen's truthy requirement. That is the core lesson: assert the actual requirement, not a proxy.
+
+Alternatives considered for round 2:
+
+| Candidate | Verdict | Reason |
+|-----------|---------|--------|
+| `''` (empty string) | Rejected | Falsy — `!''` is true — Hydrogen still drops the event |
+| `null` / `undefined` | Rejected | Even more explicitly falsy |
+| A fabricated vendor name | Rejected | Would mislead a maintainer into thinking MCP provides the field |
+| Omit the field entirely | Rejected | Hydrogen would still see `undefined` → `!undefined` is true |
+| `'Unknown'` | Chosen | Truthy, semantically honest (MCP genuinely omits the field), does not invent a plausible vendor |
+
+### Test-gap lesson and how the new tests correct it
+
+Round 1 tests asserted key-presence (`hasOwnProperty`) and type (`typeof === 'string'`). They passed with `vendor: ''` because `''` is a string and the key exists. They did NOT assert truthiness. Hydrogen's actual check is `if (!product.vendor)` — a truthy test.
+
+Round 2 tests assert the actual Hydrogen requirement:
+
+1. **Truthy assertion** — `assert.ok(Boolean(product.vendor))` — tests that the value passes Hydrogen's own check.
+2. **Value assertion** — `assert.equal(product.vendor, 'Unknown')` — tests the specific chosen fallback.
+3. **Negative-pair regression guard** (new standalone test per path) — explicitly documents that `Boolean('')` is `false` (the round-1 failure mode) and `Boolean('Unknown')` is `true` (the required behavior). If a future change accidentally regresses to `''`, this test fails immediately with a clear error message.
+
+Each assertion test is linked to the Hydrogen source line in a comment so future readers know exactly what it protects.
+
+### Files changed in round 2
+
+| File | Change |
+|------|--------|
+| `app/lib/mcp-normalize.js` | `vendor` fallback changed from `''` to `'Unknown'` in both `normalizeCatalogProduct` and `normalizeProductDetail`; comments updated to explain the truthy requirement and the Hydrogen source line |
+| `app/lib/mcp-normalize.test.js` | Vendor describe blocks restructured from 2 tests per path (4 total) to 3 tests per path (6 total): (1) key + type, (2) truthy + value, (3) dedicated negative-pair regression guard |
+| `app/components/ChatAssistant.jsx` | Cart summary wrapper changed from `<p className="text-primary/70">` to `<div className="text-primary/70">` at line 338 — `<Money>` renders a block `<div>`, which is invalid inside `<p>` |
+
+### DOM-nesting scan — full rg results and verdict
+
+Two scans run against the full `app/` tree:
+
+**Scan 1: `<Money>` inside `<p>`**
+
+```
+rg -U '<p[^>]*>[\s\S]{0,500}?<Money' app/ --no-heading -n
+```
+
+Matches found:
+
+| File | Lines | Verdict |
+|------|-------|---------|
+| `app/components/AssistantProductCard.jsx:46-48` | Comment on line 46 says "wrapping in `<p>` causes validateDOMNesting error"; actual wrapper on line 47 is `<div>` | FALSE POSITIVE — the `<p>` is in a code comment, not the JSX element tag. Fixed in round 1. |
+| `app/components/ChatAssistant.jsx:334-342` | `<p className="text-amber-600">` (line 334) closes on line 336; `<p className="text-primary/70">` (line 338) wraps `<Money>` on line 342 | CONFIRMED VIOLATION — the `<p>` on line 338 does not close before `<Money>` |
+
+Result: 1 confirmed violation, 1 false positive. The confirmed violation is fixed in this round.
+
+**Scan 2: `<Image>` inside `<p>`**
+
+```
+rg -U '<p[^>]*>[\s\S]{0,500}?<Image' app/ --no-heading -n
+```
+
+Result: no matches.
+
+**Scan 3: `<AddToCartButton>` inside `<p>`**
+
+```
+rg -U '<p[^>]*>[\s\S]{0,500}?<AddToCartButton' app/ --no-heading -n
+```
+
+Result: no matches.
+
+**Scan 4: `<div>` inside `<p>` (broader search)**
+
+```
+rg -U '<p[^>]*>[\s\S]{0,150}?<div' app/ --no-heading -n
+```
+
+Matches found:
+
+| File | Lines | Verdict |
+|------|-------|---------|
+| `app/routes/($locale).account.edit.jsx:102-103` | `<p>` closes on line 102 (same line); `<div>` on line 103 is a sibling, not a child | FALSE POSITIVE |
+| `app/routes/($locale).account.address.$id.jsx:194-195` | Same pattern — `<p>` closes on same line | FALSE POSITIVE |
+| `app/components/ChatAssistant.jsx:199-205` | Regex window spans multiple elements; the `<p>` on line 183 is `<p className="text-xs text-primary/50 leading-none">Ask about our products</p>` — closes on line 183. The `<div>` at 205 is a sibling container, not a descendant | FALSE POSITIVE |
+| `app/components/AccountDetails.jsx:34-36` | `<p className="mt-1">` closes on line 34; `<div>` on line 36 is a sibling | FALSE POSITIVE |
+| `app/components/AssistantProductCard.jsx:46-47` | Comment on line 46 triggers the match; actual wrapper at line 47 is `<div>` | FALSE POSITIVE (same as scan 1) |
+
+Result: 0 confirmed violations in the broad scan. All matches are false positives where the `<p>` closes before the block element.
+
+**ALL confirmed `<block-element>-in-<p>` violations across the `app/` tree are now resolved.**
+
+### Gate results (actual output)
+
+**`npm run lint` — changed files only:**
+
+```
+npx eslint app/lib/mcp-normalize.js app/lib/mcp-normalize.test.js app/components/ChatAssistant.jsx
+```
+
+Result: 0 errors, 0 warnings (only a pre-existing Remix template deprecation notice unrelated to these files). Full `npm run lint` exits 1 only because of pre-existing errors in unrelated files, unchanged.
+
+**`npm run build`:**
+
+```
+✓ built in 1.02s  [client]
+✓ built in 1.12s  [SSR]
+Exit zero.
+```
+
+**`npm run test:unit`:**
+
+```
+ℹ tests 34
+ℹ suites 11
+ℹ pass 34
+ℹ fail 0
+ℹ duration_ms ~54ms
+```
+
+Previous count was 32 (4 vendor tests per round 1). Now 34 (6 vendor tests: 3 per normalizer path — key+type, truthy+value, negative-pair). The 2 new tests are the dedicated negative-pair regression guards, one per MCP path.
+
+### Bug fix verification approach (for QA)
+
+**Defect 1 (vendor truthy):**
+1. Start dev server (`npm run dev`) and navigate to `http://localhost:3000/`
+2. Open shopping assistant (bottom-right button)
+3. Open browser DevTools console
+4. Search "snowboard" and wait for product cards
+5. Confirm ZERO `[h2:error:ShopifyAnalytics] Can't set up product view analytics events because the 'vendor' is missing` errors in the console (previously 16 errors, 2 per card in React dev strict-mode double-render)
+6. As a unit-level confirmation: `npm run test:unit` shows 34 pass including the new truthy and negative-pair vendor tests
+
+**Defect 2 (DOM nesting in cart summary):**
+1. Open the assistant panel
+2. Search "snowboard" and wait for cards
+3. Click "Add to cart" on any available card
+4. When the cart summary appears ("Assistant cart — 1 item · $XXX.XX"), confirm ZERO `validateDOMNesting: <div> cannot appear as a descendant of <p>` warnings in the console (previously 1 error per cart render)

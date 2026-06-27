@@ -335,12 +335,13 @@ function MessageItem({message, onAddToCart}) {
               Started a new assistant cart.
             </p>
           )}
-          <p className="text-primary/70">
+          {/* <Money> renders a <div>; wrapping in <p> causes validateDOMNesting error */}
+          <div className="text-primary/70">
             {/* Dual-cart caveat (OQ-1, §6): this is an assistant cart separate from the site cart. */}
             Assistant cart — {cart.lineCount}{' '}
             {cart.lineCount === 1 ? 'item' : 'items'} ·{' '}
             <Money data={cart.totalAmount} />
-          </p>
+          </div>
           {cart.checkoutUrl && (
             <a
               href={cart.checkoutUrl}

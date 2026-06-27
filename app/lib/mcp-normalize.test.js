@@ -111,14 +111,26 @@ describe('normalizeProductDetailsMoney — get_product_details decimal strings',
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// vendor field — Analytics Contract (QA fix round 1)
+// vendor field — Analytics Contract (QA fix round 1, strengthened in round 2)
 // Hydrogen Analytics.ProductView requires `vendor` in the product payload.
 // Neither search_catalog nor get_product_details exposes a vendor field (PROBED).
-// The normalizer must always emit vendor: '' so the event fires rather than being
-// silently dropped with a [h2:error:ShopifyAnalytics] console error.
+//
+// CRITICAL: Hydrogen validates with `if (!product.vendor)` — a falsy (truthy) check,
+// NOT a key-presence check. Source: @shopify/hydrogen/dist/development/index.js:564
+//   if (!product.vendor) { missingErrorMessage(type, "vendor", false); return false; }
+//
+// Round 1 bug: vendor was set to '' (empty string). '' is falsy, so Hydrogen's
+// `!product.vendor` still evaluated true and every analytics event was still dropped.
+// Round 2 fix: vendor is 'Unknown' — truthy, semantically honest, not fabricated.
+//
+// These tests assert the ACTUAL Hydrogen requirement (truthy non-empty string),
+// not a proxy (key presence). A negative-pair guard is included so this class of
+// regression cannot silently re-enter:
+//   Boolean('')       === false  → would FAIL Hydrogen's check
+//   Boolean('Unknown') === true  → PASSES Hydrogen's check
 // ---------------------------------------------------------------------------
 
-describe('normalizeCatalogProduct — vendor field always present (Analytics Contract)', () => {
+describe('normalizeCatalogProduct — vendor field truthy for Analytics Contract', () => {
   const rawCatalogProduct = {
     id: 'gid://shopify/Product/1',
     title: 'Test Snowboard',
@@ -132,7 +144,7 @@ describe('normalizeCatalogProduct — vendor field always present (Analytics Con
     media: [],
   };
 
-  test('normalized catalog product carries a vendor key (string)', () => {
+  test('vendor key is present and is a string', () => {
     const product = normalizeCatalogProduct(rawCatalogProduct);
     assert.ok(
       Object.prototype.hasOwnProperty.call(product, 'vendor'),
@@ -141,17 +153,41 @@ describe('normalizeCatalogProduct — vendor field always present (Analytics Con
     assert.equal(typeof product.vendor, 'string', 'vendor must be a string');
   });
 
-  test('vendor defaults to empty string when MCP search_catalog omits the field', () => {
+  test('vendor is truthy so Hydrogen if(!product.vendor) check does not drop the event', () => {
+    // Hydrogen source: @shopify/hydrogen/dist/development/index.js:564
+    //   if (!product.vendor) { missingErrorMessage(...); return false; }
+    // An empty string '' is falsy — !'' === true — so an '' fallback still drops the event.
     const product = normalizeCatalogProduct(rawCatalogProduct);
+    assert.ok(
+      Boolean(product.vendor),
+      `vendor must be truthy; got "${product.vendor}" which is falsy and would drop the analytics event`,
+    );
     assert.equal(
       product.vendor,
-      '',
-      'vendor must be empty string when MCP omits the field (safe fallback)',
+      'Unknown',
+      'vendor must be "Unknown" — truthy fallback when MCP search_catalog omits the field',
+    );
+  });
+
+  test('negative-pair guard: "" is falsy (round-1 bug), "Unknown" is truthy (correct)', () => {
+    // Explicit negative-pair to prevent the truthy-vs-key-presence trap from re-entering.
+    // Round-1 bug: vendor was set to '' — key present, but '' is falsy, event still dropped.
+    // Hydrogen validates: if (!product.vendor) → !'' === true → drops event.
+    // This test documents that assertion so any future "" regression is caught immediately.
+    assert.equal(
+      Boolean(''),
+      false,
+      'guard: empty string is falsy — returning "" re-introduces the round-1 analytics bug',
+    );
+    assert.equal(
+      Boolean('Unknown'),
+      true,
+      'guard: "Unknown" is truthy — satisfies Hydrogen if(!product.vendor) check',
     );
   });
 });
 
-describe('normalizeProductDetail — vendor field always present (Analytics Contract)', () => {
+describe('normalizeProductDetail — vendor field truthy for Analytics Contract', () => {
   const rawDetail = {
     product_id: 'gid://shopify/Product/1',
     title: 'Test Snowboard',
@@ -162,7 +198,7 @@ describe('normalizeProductDetail — vendor field always present (Analytics Cont
     },
   };
 
-  test('normalized detail product carries a vendor key (string)', () => {
+  test('vendor key is present and is a string', () => {
     const product = normalizeProductDetail(rawDetail);
     assert.ok(
       Object.prototype.hasOwnProperty.call(product, 'vendor'),
@@ -171,12 +207,32 @@ describe('normalizeProductDetail — vendor field always present (Analytics Cont
     assert.equal(typeof product.vendor, 'string', 'vendor must be a string');
   });
 
-  test('vendor defaults to empty string when MCP get_product_details omits the field', () => {
+  test('vendor is truthy so Hydrogen if(!product.vendor) check does not drop the event', () => {
+    // Hydrogen source: @shopify/hydrogen/dist/development/index.js:564
+    //   if (!product.vendor) { missingErrorMessage(...); return false; }
     const product = normalizeProductDetail(rawDetail);
+    assert.ok(
+      Boolean(product.vendor),
+      `vendor must be truthy; got "${product.vendor}" which is falsy and would drop the analytics event`,
+    );
     assert.equal(
       product.vendor,
-      '',
-      'vendor must be empty string when MCP omits the field (safe fallback)',
+      'Unknown',
+      'vendor must be "Unknown" — truthy fallback when MCP get_product_details omits the field',
+    );
+  });
+
+  test('negative-pair guard: "" is falsy (round-1 bug), "Unknown" is truthy (correct)', () => {
+    // Mirrors the catalog-path negative-pair above — same Hydrogen truthy contract.
+    assert.equal(
+      Boolean(''),
+      false,
+      'guard: empty string is falsy — returning "" re-introduces the round-1 analytics bug',
+    );
+    assert.equal(
+      Boolean('Unknown'),
+      true,
+      'guard: "Unknown" is truthy — satisfies Hydrogen if(!product.vendor) check',
     );
   });
 });

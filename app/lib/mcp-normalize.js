@@ -176,9 +176,11 @@ export function normalizeCatalogProduct(rawProduct) {
     id: rawProduct.id,
     title: rawProduct.title,
     // MCP search_catalog does not expose a vendor field (PROBED probe 3).
-    // Empty string is the safe fallback so Hydrogen Analytics.ProductView always
-    // receives a `vendor` key and can fire the event without dropping it.
-    vendor: '',
+    // 'Unknown' is truthy — Hydrogen Analytics validates with `if (!product.vendor)`
+    // (source: @shopify/hydrogen/dist/development/index.js:564), so an empty string
+    // would still silently drop the event. 'Unknown' is semantically honest (MCP
+    // genuinely omits vendor) and avoids inventing a plausible-but-wrong real name.
+    vendor: 'Unknown',
     descriptionHtml: rawProduct.description?.html,
     priceRange: {
       min: priceMin
@@ -246,9 +248,11 @@ export function normalizeProductDetail(rawProduct) {
     id: rawProduct.product_id,
     title: rawProduct.title,
     // MCP get_product_details does not expose a vendor field (PROBED probe 4).
-    // Empty string is the safe fallback so Hydrogen Analytics.ProductView always
-    // receives a `vendor` key and can fire the event without dropping it.
-    vendor: '',
+    // 'Unknown' is truthy — Hydrogen Analytics validates with `if (!product.vendor)`
+    // (source: @shopify/hydrogen/dist/development/index.js:564), so an empty string
+    // would still silently drop the event. 'Unknown' is semantically honest (MCP
+    // genuinely omits vendor) and avoids inventing a plausible-but-wrong real name.
+    vendor: 'Unknown',
     descriptionHtml: rawProduct.description,
     priceRange: {
       min: normalizeProductDetailsMoney(priceRange.min ?? '0.00', currency),
