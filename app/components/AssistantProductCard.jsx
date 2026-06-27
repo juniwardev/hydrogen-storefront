@@ -21,8 +21,16 @@ import {Analytics, Money} from '@shopify/hydrogen';
  * }} props
  */
 export function AssistantProductCard({product, onAddToCart}) {
-  const {id, title, vendor, priceRange, image, firstVariantId, available} =
-    product;
+  const {
+    id,
+    title,
+    vendor,
+    priceRange,
+    image,
+    firstVariantId,
+    firstVariantTitle,
+    available,
+  } = product;
 
   return (
     <div className="border border-primary/10 rounded-lg overflow-hidden bg-contrast text-primary">
@@ -79,13 +87,16 @@ export function AssistantProductCard({product, onAddToCart}) {
               {
                 id,
                 title,
-                // vendor is required by Hydrogen Analytics to fire the event.
-                // MCP does not expose a vendor field (PROBED); normalizer sets '' as
-                // the safe fallback so the event fires rather than being silently dropped.
+                // vendor: 'Unknown' — MCP omits this field (PROBED probe 3/4).
+                // Normalizer guarantees a truthy value; empty string would still
+                // fail Hydrogen's check: if (!product.vendor) — see index.js:564.
                 vendor,
                 price: priceRange.min.amount,
                 variantId: firstVariantId,
-                variantTitle: '',
+                // firstVariantTitle from normalizer (firstVariant.title || 'Default Title').
+                // PROBED probe 3: variants[0].title = "Default Title".
+                // Hydrogen: if (!product.variantTitle) — see index.js:572.
+                variantTitle: firstVariantTitle,
                 quantity: 1,
               },
             ],

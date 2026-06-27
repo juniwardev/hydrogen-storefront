@@ -23,6 +23,7 @@
  *   priceRange: {min: Money, max: Money},
  *   image?: {url: string, altText: string},
  *   firstVariantId?: string,
+ *   firstVariantTitle: string,
  *   available: boolean,
  * }} AssistantProduct
  *
@@ -169,6 +170,13 @@ export function normalizeCatalogProduct(rawProduct) {
     ? rawProduct.variants[0]
     : null;
   const firstVariantId = firstVariant?.id ?? undefined;
+  // Map variant title for the Analytics Contract.
+  // PROBED probe 3: search_catalog variants[0].title = "Default Title" is present.
+  // Hydrogen validates: if (!product.variantTitle) { ... return false; }
+  // Source: @shopify/hydrogen/dist/development/index.js:572
+  // Use || (not ??) so empty string also falls back — empty string is falsy and would
+  // fail the Hydrogen truthy check just as undefined would.
+  const firstVariantTitle = firstVariant?.title || 'Default Title';
   // Availability from first variant; default true if absent
   const available = firstVariant?.availability?.available ?? true;
 
@@ -192,6 +200,7 @@ export function normalizeCatalogProduct(rawProduct) {
     },
     image: extractCatalogImage(rawProduct),
     firstVariantId,
+    firstVariantTitle,
     available,
   };
 }
@@ -225,6 +234,12 @@ export function normalizeProductDetail(rawProduct) {
 
   const variant = rawProduct.selectedOrFirstAvailableVariant;
   const firstVariantId = variant?.variant_id ?? undefined;
+  // Map variant title for the Analytics Contract.
+  // PROBED probe 4: selectedOrFirstAvailableVariant.title = "Default Title" is present.
+  // Hydrogen validates: if (!product.variantTitle) { ... return false; }
+  // Source: @shopify/hydrogen/dist/development/index.js:572
+  // Use || (not ??) so empty string also falls back.
+  const firstVariantTitle = variant?.title || 'Default Title';
   const available = variant?.available ?? true;
 
   let image;
@@ -260,6 +275,7 @@ export function normalizeProductDetail(rawProduct) {
     },
     image,
     firstVariantId,
+    firstVariantTitle,
     available,
   };
 }

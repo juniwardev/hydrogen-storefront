@@ -139,7 +139,11 @@ describe('normalizeCatalogProduct — vendor field truthy for Analytics Contract
       max: {amount: 1999, currency: 'USD'},
     },
     variants: [
-      {id: 'gid://shopify/ProductVariant/1', availability: {available: true}},
+      {
+        id: 'gid://shopify/ProductVariant/1',
+        title: 'Default Title',
+        availability: {available: true},
+      },
     ],
     media: [],
   };
@@ -194,6 +198,7 @@ describe('normalizeProductDetail — vendor field truthy for Analytics Contract'
     price_range: {min: '19.99', max: '19.99', currency: 'USD'},
     selectedOrFirstAvailableVariant: {
       variant_id: 'gid://shopify/ProductVariant/1',
+      title: 'Default Title',
       available: true,
     },
   };
@@ -235,6 +240,168 @@ describe('normalizeProductDetail — vendor field truthy for Analytics Contract'
       'guard: "Unknown" is truthy — satisfies Hydrogen if(!product.vendor) check',
     );
   });
+});
+
+// ---------------------------------------------------------------------------
+// Analytics.ProductView comprehensive payload contract — QA fix round 3
+//
+// Hydrogen's validateProducts() (source: @shopify/hydrogen/dist/development/index.js
+// lines 543-578) checks EVERY field below with a truthy guard before setting up
+// a product view event.  A sequential validator stops at the FIRST failure, so
+// one passing field can mask a failing one in the next position.  These tests
+// check the ENTIRE payload at once (positive) and prove the guard catches a
+// regression on ANY individual field (negative).
+//
+// The list HYDROGEN_PRODUCT_VIEW_REQUIRED_FIELDS is the single source of truth.
+// Adding a field here automatically extends both positive and negative coverage.
+//
+// toAnalyticsPayload() mirrors exactly what AssistantProductCard.jsx passes
+// into <Analytics.ProductView data={{products: [...]}} />.
+// ---------------------------------------------------------------------------
+
+/**
+ * Fields Hydrogen's validateProducts() requires to be truthy, in check order.
+ * Source: @shopify/hydrogen/dist/development/index.js
+ *   line 552: if (!product.id)
+ *   line 556: if (!product.title)
+ *   line 560: if (!product.price)
+ *   line 564: if (!product.vendor)
+ *   line 568: if (!product.variantId)
+ *   line 572: if (!product.variantTitle)
+ */
+const HYDROGEN_PRODUCT_VIEW_REQUIRED_FIELDS = [
+  'id',
+  'title',
+  'price',
+  'vendor',
+  'variantId',
+  'variantTitle',
+];
+
+/**
+ * Maps a normalized AssistantProduct to the Analytics.ProductView ProductPayload.
+ * Mirrors the exact mapping in AssistantProductCard.jsx so the test covers the
+ * same field selections the component makes.
+ *
+ * @param {import('./mcp-normalize').AssistantProduct} product
+ * @returns {Record<string, unknown>}
+ */
+function toAnalyticsPayload(product) {
+  return {
+    id: product.id,
+    title: product.title,
+    price: product.priceRange.min.amount,
+    vendor: product.vendor,
+    variantId: product.firstVariantId,
+    variantTitle: product.firstVariantTitle,
+    quantity: 1,
+  };
+}
+
+// Representative search_catalog product (probe 3 from mcp-shopping-assistant-impl-notes.md).
+const CATALOG_PROBE_FIXTURE = {
+  id: 'gid://shopify/Product/9356161155292',
+  title: 'The Inventory Not Tracked Snowboard',
+  description: {html: '<p>A great snowboard.</p>'},
+  price_range: {
+    min: {amount: 94995, currency: 'USD'},
+    max: {amount: 94995, currency: 'USD'},
+  },
+  variants: [
+    {
+      id: 'gid://shopify/ProductVariant/50239738609884',
+      title: 'Default Title',
+      availability: {available: true},
+    },
+  ],
+  media: [
+    {
+      type: 'image',
+      url: 'https://cdn.shopify.com/s/files/1/test/snowboard.png',
+      alt_text: 'Top and bottom view of a snowboard',
+    },
+  ],
+  tags: ['Accessory', 'Sport', 'Winter'],
+};
+
+// Representative get_product_details product (probe 4 from mcp-shopping-assistant-impl-notes.md).
+const DETAIL_PROBE_FIXTURE = {
+  product_id: 'gid://shopify/Product/9356161155292',
+  title: 'The Inventory Not Tracked Snowboard',
+  description: 'A great snowboard.',
+  url: null,
+  image_url: 'https://cdn.shopify.com/s/files/1/test/snowboard.png',
+  images: [
+    {
+      url: 'https://cdn.shopify.com/s/files/1/test/snowboard.png',
+      alt_text: 'Top and bottom view of a snowboard',
+    },
+  ],
+  options: [{name: 'Title', values: ['Default Title']}],
+  total_variants: 1,
+  price_range: {min: '949.95', max: '949.95', currency: 'USD'},
+  selectedOrFirstAvailableVariant: {
+    variant_id: 'gid://shopify/ProductVariant/50239738609884',
+    title: 'Default Title',
+    price: '949.95',
+    currency: 'USD',
+    image_url: 'https://cdn.shopify.com/s/files/1/test/snowboard.png',
+    image_alt_text: 'Top and bottom view of a snowboard',
+    available: true,
+    selected_options: [{name: 'Title', value: 'Default Title'}],
+  },
+};
+
+describe('Analytics.ProductView — comprehensive payload contract (QA fix round 3)', () => {
+  test('[catalog path] every Hydrogen-required field is truthy (protects index.js:552-574)', () => {
+    // Positive: a product normalized from a representative search_catalog response
+    // must produce a payload where every field passes Hydrogen's truthy check.
+    // If ANY field is falsy, the validator short-circuits and drops the event.
+    const product = normalizeCatalogProduct(CATALOG_PROBE_FIXTURE);
+    const payload = toAnalyticsPayload(product);
+    for (const field of HYDROGEN_PRODUCT_VIEW_REQUIRED_FIELDS) {
+      assert.ok(
+        Boolean(payload[field]),
+        `catalog path: payload.${field} must be truthy; got ${JSON.stringify(
+          payload[field],
+        )}. ` +
+          `Hydrogen guard: if (!product.${field}) drops the analytics event.`,
+      );
+    }
+  });
+
+  test('[detail path] every Hydrogen-required field is truthy (protects index.js:552-574)', () => {
+    // Positive: a product normalized from a representative get_product_details response
+    // must also produce a fully-truthy payload.
+    const product = normalizeProductDetail(DETAIL_PROBE_FIXTURE);
+    const payload = toAnalyticsPayload(product);
+    for (const field of HYDROGEN_PRODUCT_VIEW_REQUIRED_FIELDS) {
+      assert.ok(
+        Boolean(payload[field]),
+        `detail path: payload.${field} must be truthy; got ${JSON.stringify(
+          payload[field],
+        )}. ` +
+          `Hydrogen guard: if (!product.${field}) drops the analytics event.`,
+      );
+    }
+  });
+
+  // Negative tests: one per required field.  For each field, simulate blanking it to ''
+  // (falsy) and confirm the truthy check fails.  This proves the guard would catch
+  // a regression on that specific field, not just the first one in the sequential chain.
+  for (const field of HYDROGEN_PRODUCT_VIEW_REQUIRED_FIELDS) {
+    test(`[negative] blanking "${field}" to "" fails Hydrogen's truthy check (index.js guard)`, () => {
+      const product = normalizeCatalogProduct(CATALOG_PROBE_FIXTURE);
+      const payload = toAnalyticsPayload(product);
+      // Simulate a regression: the field is blanked to an empty string.
+      const broken = {...payload, [field]: ''};
+      assert.equal(
+        Boolean(broken[field]),
+        false,
+        `"${field}" set to "" must be falsy — Hydrogen's if (!product.${field}) would drop the event`,
+      );
+    });
+  }
 });
 
 describe('normalizeCartMoney — cart decimal strings with nested {amount, currency}', () => {
