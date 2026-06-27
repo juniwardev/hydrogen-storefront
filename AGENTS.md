@@ -119,7 +119,7 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
   - Confirm pages render server-side (view source should contain rendered HTML, not just `<div id="root">`).
   - Check DevTools console for React hydration warnings — these are bugs, not warnings to ignore.
   - Verify GraphQL data populates correctly (images load, prices show, no empty arrays where data should be).
-  - Confirm `<Analytics.ProductView>` / `<Analytics.ItemView>` receive a valid `variantId` on product pages.
+  - Confirm `<Analytics.ProductView>` receives a valid `variantId` (inside its `{products: [...]}` payload) on product pages and product cards.
 - Project also has Playwright end-to-end tests at the codebase level: `npm run e2e` runs them. For feature verification, browser MCP testing is usually sufficient; reach for `npm run e2e` when you specifically need to update the long-running test suite.
 - See `docs/dev-fixtures.md` for test product handles and any setup notes.
 
@@ -226,7 +226,11 @@ Ensure that components requiring browser APIs (`window`, `document`) are either 
 
 #### The Analytics Contract
 
-When rendering product pages or product cards, ensure the `variantId` is correctly extracted from the GraphQL payload and passed to `<Analytics.ProductView>` or `<Analytics.ItemView>`. Missing IDs will break downstream tracking.
+When rendering product pages or product cards, ensure the `variantId` is correctly extracted from the GraphQL (or MCP catalog) payload and passed to `<Analytics.ProductView>` via its `data={{products: [...]}}` payload. Missing IDs will break downstream tracking.
+
+The Hydrogen `Analytics` namespace (verified against Hydrogen 2026-04 via the Shopify Dev MCP) exposes exactly: `Provider`, `ProductView`, `CartView`, `CollectionView`, `SearchView`, and `CustomView`. There is **no** `Analytics.ItemView` — referencing it renders an undefined component and crashes the render path at SSR/hydration. Use `Analytics.ProductView` for both product pages and product cards.
+
+> **Correction note (2026-06-27):** Earlier revisions of this contract listed `<Analytics.ItemView>` as an alternative. That component does not exist in the Hydrogen Analytics namespace; the wording was inherited verbatim into a feature plan (`docs/plans/mcp-shopping-assistant.md`) and caught by the Plan-Reviewer agent, which verified the real namespace via the Shopify Dev MCP. Corrected here so the error does not propagate to future features that read this file as their grounding source.
 
 #### Code Quality & Pre-Save Audits
 
