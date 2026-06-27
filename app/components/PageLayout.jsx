@@ -18,6 +18,7 @@ import {
 import {useIsHomePath} from '~/lib/utils';
 import {useIsHydrated} from '~/hooks/useIsHydrated';
 import {useCartFetchers} from '~/hooks/useCartFetchers';
+import {ChatAssistant} from '~/components/ChatAssistant';
 import {Footer} from '~/components/Footer';
 
 /**
@@ -41,6 +42,13 @@ export function PageLayout({children, layout}) {
         </main>
       </div>
       <Footer menu={footerMenu} />
+      {/*
+       * ChatAssistant is rendered inside <Analytics.Provider> (root.jsx wraps
+       * PageLayout in the Provider) so <Analytics.ProductView> has context.
+       * The component itself gates on useIsHydrated, so it renders nothing
+       * on the server and during the first client render.
+       */}
+      <ChatAssistant />
     </>
   );
 }
