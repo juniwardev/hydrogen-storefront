@@ -510,3 +510,94 @@ node --test app/lib/mcp.server.test.js
 ### Out-of-scope observations (new)
 
 4. `mcp.server.test.js` uses `node --test` (Node 20+ built-in). The `npm run lint` command picks up the test file; adding an `npm run test:unit` script wrapping `node --test` would be a clean improvement — flagged, not implemented (not in plan scope).
+
+---
+
+## Operator-preference audit (post-build)
+
+- Normalizer pattern at end of audit: one generic function refactored to per-source
+- Normalizer unit test exists: wrote it during audit at app/lib/mcp-normalize.test.js
+- test:unit script in package.json: added it during audit
+- All three Money fixtures covered with bidirectional 100x assertions: fixed during audit
+
+---
+
+## QA fix round 1
+
+Date: 2026-06-27
+Author: Coder
+
+QA returned FAIL on two defects, both in `app/components/AssistantProductCard.jsx`. Both are now fixed and all three gates pass.
+
+### Defect 1 (HIGH) — Analytics Contract: `vendor` missing from `Analytics.ProductView`
+
+**Finding from QA:** Hydrogen's `Analytics.ProductView` requires a `vendor` field in the product payload. Without it, every card logged `[h2:error:ShopifyAnalytics] Can't set up product view analytics events because the 'vendor' is missing` and silently dropped the analytics event.
+
+**Was `vendor` in the MCP payload?** No. Confirmed against probe ground-truth in this document:
+- `search_catalog` product shape (probe 3): `id`, `title`, `description`, `price_range`, `variants`, `media`, `tags` — no `vendor` field.
+- `get_product_details` product shape (probe 4): `product_id`, `title`, `description`, `url`, `image_url`, `images`, `options`, `total_variants`, `price_range`, `selectedOrFirstAvailableVariant` — no `vendor` field.
+
+**Decision:** Empty-string fallback `vendor: ''` at the normalizer layer. This is honest (a real value from the MCP payload would be preferred, but none exists) and allows Hydrogen Analytics to fire the event rather than dropping it. This is not Anti-Stubbing — Anti-Stubbing prohibits commenting out UI or hardcoding fake data to sidestep a TypeError; an explicit empty-string fallback with a comment documenting why is the correct approach.
+
+**Files changed:**
+
+`app/lib/mcp-normalize.js`:
+- Added `vendor: string` to the `AssistantProduct` typedef.
+- `normalizeCatalogProduct`: added `vendor: ''` with a comment explaining MCP omits the field.
+- `normalizeProductDetail`: added `vendor: ''` with the same explanation.
+
+`app/components/AssistantProductCard.jsx`:
+- Destructured `vendor` from `product`.
+- Added `vendor` to the `products[0]` payload inside `<Analytics.ProductView>`.
+
+`app/lib/mcp-normalize.test.js`:
+- Added `normalizeCatalogProduct — vendor field always present (Analytics Contract)` describe block with 2 tests:
+  - `normalized catalog product carries a vendor key (string)` — asserts key exists and is a string.
+  - `vendor defaults to empty string when MCP search_catalog omits the field` — asserts value is `''`.
+- Added `normalizeProductDetail — vendor field always present (Analytics Contract)` describe block with 2 parallel tests.
+- Also added imports for `normalizeCatalogProduct` and `normalizeProductDetail` to the existing import statement.
+
+### Defect 2 (MEDIUM) — DOM nesting: `<div>` inside `<p>`
+
+**Finding from QA:** Hydrogen's `<Money>` component renders a block-level `<div>`. It was wrapped in a `<p>` at line 46, triggering `validateDOMNesting: <div> cannot appear as a descendant of <p>` for every card.
+
+**Fix:** Changed the `<p className="text-sm text-primary/80">` wrapper to `<div className="text-sm text-primary/80">`. ClassNames preserved verbatim; only the element tag changed. Added an inline comment explaining why `<p>` was replaced.
+
+**Scan for other block-in-`<p>` nesting:** The rest of the card uses `<h3>` (for title) and `<button>` (for add-to-cart), both inside a `<div>` container — no other violations.
+
+**File changed:** `app/components/AssistantProductCard.jsx` line 45 (now `<div>`).
+
+### Gate results (actual output)
+
+**`npm run test:unit`:**
+```
+ℹ tests 32
+ℹ suites 11
+ℹ pass 32
+ℹ fail 0
+ℹ duration_ms ~57ms
+```
+(was 28 tests / 9 suites before this fix; added 4 new vendor assertions across 2 new describe blocks)
+
+**`npm run lint` — changed files:**
+- `app/lib/mcp-normalize.js`: 0 errors, 0 warnings
+- `app/components/AssistantProductCard.jsx`: 0 errors, 0 warnings
+- `app/lib/mcp-normalize.test.js`: 0 errors, 0 warnings
+(Full `npm run lint` exits 1 only because of pre-existing errors in unrelated files, unchanged from the original build phase.)
+
+**`npm run build`:**
+```
+✓ 391 modules transformed.  [client]
+✓ 375 modules transformed.  [SSR]
+Exit zero.
+```
+
+### How the vendor analytics error is confirmed resolved (for QA)
+
+The normalizer now always emits `vendor: string` for every product coming from both MCP paths. The four new unit tests (`npm run test:unit`) assert this contract holds:
+1. `normalizeCatalogProduct` → `vendor` key present and is a string.
+2. `normalizeCatalogProduct` → `vendor` value is `''` when MCP omits the field.
+3. `normalizeProductDetail` → `vendor` key present and is a string.
+4. `normalizeProductDetail` → `vendor` value is `''` when MCP omits the field.
+
+`AssistantProductCard.jsx` now passes `vendor` into `<Analytics.ProductView>`'s product payload alongside the previously-correct `variantId`, `price`, `id`, and `title`. Runtime confirmation that the `[h2:error:ShopifyAnalytics]` error no longer fires is QA's job via browser/Playwright — the normalizer contract and passing unit tests are the Coder-side signal.

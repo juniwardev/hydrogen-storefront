@@ -18,6 +18,7 @@
  * @typedef {{
  *   id: string,
  *   title: string,
+ *   vendor: string,
  *   descriptionHtml?: string,
  *   priceRange: {min: Money, max: Money},
  *   image?: {url: string, altText: string},
@@ -79,13 +80,16 @@ export function minorUnitsToDecimalString(amount, currencyCode) {
 }
 
 /**
- * [CATALOG PATH] Maps a search_catalog price object to the Money shape.
+ * [CATALOG PATH] Normalizes a search_catalog Money object to the shared Money shape.
  * Input: integer minor units + nested {amount: number, currency: string}.
+ * Divides by 100 for standard currencies; zero-decimal currencies are passed through.
+ *
+ * Example: {amount: 1999, currency: "USD"} → {amount: "19.99", currencyCode: "USD"}
  *
  * @param {{amount: number, currency: string}} raw
  * @returns {Money}
  */
-function catalogMoneyToMoney(raw) {
+export function normalizeSearchCatalogMoney(raw) {
   const currencyCode = raw.currency;
   return {
     amount: minorUnitsToDecimalString(raw.amount, currencyCode),
@@ -94,15 +98,17 @@ function catalogMoneyToMoney(raw) {
 }
 
 /**
- * [DETAIL PATH] Maps a get_product_details price to the Money shape.
+ * [DETAIL PATH] Normalizes a get_product_details price to the shared Money shape.
  * Input: decimal string amount + sibling currency field.
- * The amount is already in major units — no division.
+ * The amount is already in major units — NO division applied.
  *
- * @param {string|number} amountStr - decimal string e.g. "949.95"
+ * Example: ("19.99", "USD") → {amount: "19.99", currencyCode: "USD"}
+ *
+ * @param {string|number} amountStr - decimal string e.g. "19.99"
  * @param {string} currency - e.g. "USD"
  * @returns {Money}
  */
-function decimalStringToMoney(amountStr, currency) {
+export function normalizeProductDetailsMoney(amountStr, currency) {
   return {
     amount: String(amountStr),
     currencyCode: currency,
@@ -110,14 +116,16 @@ function decimalStringToMoney(amountStr, currency) {
 }
 
 /**
- * [CART PATH] Maps a cart cost object to the Money shape.
- * Input: decimal string + nested {amount: string, currency: string}.
- * The amount is already in major units — no division.
+ * [CART PATH] Normalizes a cart cost object to the shared Money shape.
+ * Input: nested {amount: string, currency: string} with decimal string amount.
+ * The amount is already in major units — NO division applied.
+ *
+ * Example: {amount: "19.99", currency: "USD"} → {amount: "19.99", currencyCode: "USD"}
  *
  * @param {{amount: string|number, currency: string}} raw
  * @returns {Money}
  */
-function cartMoneyToMoney(raw) {
+export function normalizeCartMoney(raw) {
   return {
     amount: String(raw.amount),
     currencyCode: raw.currency,
@@ -167,13 +175,17 @@ export function normalizeCatalogProduct(rawProduct) {
   return {
     id: rawProduct.id,
     title: rawProduct.title,
+    // MCP search_catalog does not expose a vendor field (PROBED probe 3).
+    // Empty string is the safe fallback so Hydrogen Analytics.ProductView always
+    // receives a `vendor` key and can fire the event without dropping it.
+    vendor: '',
     descriptionHtml: rawProduct.description?.html,
     priceRange: {
       min: priceMin
-        ? catalogMoneyToMoney(priceMin)
+        ? normalizeSearchCatalogMoney(priceMin)
         : {amount: '0.00', currencyCode: 'USD'},
       max: priceMax
-        ? catalogMoneyToMoney(priceMax)
+        ? normalizeSearchCatalogMoney(priceMax)
         : {amount: '0.00', currencyCode: 'USD'},
     },
     image: extractCatalogImage(rawProduct),
@@ -233,10 +245,14 @@ export function normalizeProductDetail(rawProduct) {
   return {
     id: rawProduct.product_id,
     title: rawProduct.title,
+    // MCP get_product_details does not expose a vendor field (PROBED probe 4).
+    // Empty string is the safe fallback so Hydrogen Analytics.ProductView always
+    // receives a `vendor` key and can fire the event without dropping it.
+    vendor: '',
     descriptionHtml: rawProduct.description,
     priceRange: {
-      min: decimalStringToMoney(priceRange.min ?? '0.00', currency),
-      max: decimalStringToMoney(priceRange.max ?? '0.00', currency),
+      min: normalizeProductDetailsMoney(priceRange.min ?? '0.00', currency),
+      max: normalizeProductDetailsMoney(priceRange.max ?? '0.00', currency),
     },
     image,
     firstVariantId,
@@ -261,7 +277,7 @@ export function normalizeCart(rawCart) {
   return {
     id: rawCart.id,
     totalAmount: totalAmount
-      ? cartMoneyToMoney(totalAmount)
+      ? normalizeCartMoney(totalAmount)
       : {amount: '0.00', currencyCode: 'USD'},
     lineCount:
       rawCart.total_quantity ??

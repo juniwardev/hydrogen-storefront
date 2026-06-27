@@ -21,7 +21,8 @@ import {Analytics, Money} from '@shopify/hydrogen';
  * }} props
  */
 export function AssistantProductCard({product, onAddToCart}) {
-  const {id, title, priceRange, image, firstVariantId, available} = product;
+  const {id, title, vendor, priceRange, image, firstVariantId, available} =
+    product;
 
   return (
     <div className="border border-primary/10 rounded-lg overflow-hidden bg-contrast text-primary">
@@ -42,9 +43,10 @@ export function AssistantProductCard({product, onAddToCart}) {
         <h3 className="font-medium text-sm leading-tight">{title}</h3>
 
         {/* Price — uses the normalized Money shape {amount: string, currencyCode: string} */}
-        <p className="text-sm text-primary/80">
+        {/* <Money> renders a <div>; wrapping in <p> causes validateDOMNesting error */}
+        <div className="text-sm text-primary/80">
           <Money data={priceRange.min} />
-        </p>
+        </div>
 
         {/* Add to cart — disabled when variant is unavailable */}
         {firstVariantId ? (
@@ -77,6 +79,10 @@ export function AssistantProductCard({product, onAddToCart}) {
               {
                 id,
                 title,
+                // vendor is required by Hydrogen Analytics to fire the event.
+                // MCP does not expose a vendor field (PROBED); normalizer sets '' as
+                // the safe fallback so the event fires rather than being silently dropped.
+                vendor,
                 price: priceRange.min.amount,
                 variantId: firstVariantId,
                 variantTitle: '',
