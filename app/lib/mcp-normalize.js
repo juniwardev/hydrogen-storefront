@@ -1,13 +1,12 @@
 /**
- * MCP response normalization — pure functions, no network, no side effects.
+ * UCP MCP response normalization — pure functions, no network, no side effects.
  *
- * Two explicit price paths (PROBED, AL-21):
- *  - search_catalog: integer minor units, nested {amount: number, currency: string}
- *  - get_product_details: decimal strings, sibling currency field in price_range
- *  - cart cost: decimal strings, nested {amount: string, currency: string}
- *
- * Every Money-like source uses the key `currency` (not `currencyCode`);
- * all paths rename it to `currencyCode` so <Money> receives the correct shape.
+ * Single price path (§6.5 — UCP simplification over the retired /api/mcp
+ * two-path divergence): every UCP amount is an INTEGER MINOR CURRENCY UNIT
+ * (PROBED live, e.g. search_catalog price_range.min.amount = 69995 for
+ * $699.95), uniformly across catalog, cart, and checkout. Every Money-like
+ * source uses the key `currency` (not `currencyCode`); normalizers rename it
+ * to `currencyCode` so <Money> receives the correct shape.
  *
  * @module mcp-normalize
  */
@@ -33,10 +32,15 @@
  *   lineCount: number,
  *   checkoutUrl?: string,
  * }} AssistantCart
+ *
+ * @typedef {{
+ *   id: string,
+ *   checkoutUrl?: string,
+ * }} AssistantCheckout
  */
 
 // Zero-decimal currencies (ISO 4217 subset). For these, the integer amount
-// from search_catalog is already in major units — no division needed.
+// is already in major units — no division needed.
 const ZERO_DECIMAL_CURRENCIES = new Set([
   'BIF',
   'CLP',
@@ -61,7 +65,8 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
 
 /**
  * Converts an integer minor-unit amount to a decimal string in major units.
- * Used only for the search_catalog price path (integer minor units).
+ * This is the SOLE price path under UCP (§6.5) — used for catalog, cart, and
+ * checkout amounts alike.
  *
  * Examples:
  *   minorUnitsToDecimalString(94995, 'USD') → '949.95'
@@ -81,16 +86,16 @@ export function minorUnitsToDecimalString(amount, currencyCode) {
 }
 
 /**
- * [CATALOG PATH] Normalizes a search_catalog Money object to the shared Money shape.
- * Input: integer minor units + nested {amount: number, currency: string}.
- * Divides by 100 for standard currencies; zero-decimal currencies are passed through.
+ * Normalizes any UCP Money object ({amount: number, currency: string}) to
+ * the shared Money shape. Applies uniformly to catalog, cart, and checkout
+ * amounts (§6.5 simplification — UCP has no decimal-string price path).
  *
  * Example: {amount: 1999, currency: "USD"} → {amount: "19.99", currencyCode: "USD"}
  *
  * @param {{amount: number, currency: string}} raw
  * @returns {Money}
  */
-export function normalizeSearchCatalogMoney(raw) {
+export function normalizeUcpMoney(raw) {
   const currencyCode = raw.currency;
   return {
     amount: minorUnitsToDecimalString(raw.amount, currencyCode),
@@ -99,42 +104,7 @@ export function normalizeSearchCatalogMoney(raw) {
 }
 
 /**
- * [DETAIL PATH] Normalizes a get_product_details price to the shared Money shape.
- * Input: decimal string amount + sibling currency field.
- * The amount is already in major units — NO division applied.
- *
- * Example: ("19.99", "USD") → {amount: "19.99", currencyCode: "USD"}
- *
- * @param {string|number} amountStr - decimal string e.g. "19.99"
- * @param {string} currency - e.g. "USD"
- * @returns {Money}
- */
-export function normalizeProductDetailsMoney(amountStr, currency) {
-  return {
-    amount: String(amountStr),
-    currencyCode: currency,
-  };
-}
-
-/**
- * [CART PATH] Normalizes a cart cost object to the shared Money shape.
- * Input: nested {amount: string, currency: string} with decimal string amount.
- * The amount is already in major units — NO division applied.
- *
- * Example: {amount: "19.99", currency: "USD"} → {amount: "19.99", currencyCode: "USD"}
- *
- * @param {{amount: string|number, currency: string}} raw
- * @returns {Money}
- */
-export function normalizeCartMoney(raw) {
-  return {
-    amount: String(raw.amount),
-    currencyCode: raw.currency,
-  };
-}
-
-/**
- * Extracts the best image from a search_catalog product.
+ * Extracts the best image from a UCP catalog product.
  * Product-level media has alt_text; variant-level media does not (PROBED).
  *
  * @param {object} rawProduct - raw search_catalog product
@@ -157,9 +127,10 @@ function extractCatalogImage(rawProduct) {
 
 /**
  * Normalizes one raw search_catalog product to AssistantProduct.
- * Uses the INTEGER MINOR UNITS price path (PROBED: amount is 94995 for $949.95).
+ * Uses the single UCP minor-units price path (PROBED live: amount is 69995
+ * for $699.95).
  *
- * @param {object} rawProduct - one element from search_catalog result.products[]
+ * @param {object} rawProduct - one element from search_catalog structuredContent.products[]
  * @returns {AssistantProduct}
  */
 export function normalizeCatalogProduct(rawProduct) {
@@ -171,7 +142,7 @@ export function normalizeCatalogProduct(rawProduct) {
     : null;
   const firstVariantId = firstVariant?.id ?? undefined;
   // Map variant title for the Analytics Contract.
-  // PROBED probe 3: search_catalog variants[0].title = "Default Title" is present.
+  // PROBED: search_catalog variants[0].title = "Ice" / "Default Title" is present.
   // Hydrogen validates: if (!product.variantTitle) { ... return false; }
   // Source: @shopify/hydrogen/dist/development/index.js:572
   // Use || (not ??) so empty string also falls back — empty string is falsy and would
@@ -183,19 +154,19 @@ export function normalizeCatalogProduct(rawProduct) {
   return {
     id: rawProduct.id,
     title: rawProduct.title,
-    // MCP search_catalog does not expose a vendor field (PROBED probe 3).
+    // UCP search_catalog does not expose a vendor field (PROBED).
     // 'Unknown' is truthy — Hydrogen Analytics validates with `if (!product.vendor)`
     // (source: @shopify/hydrogen/dist/development/index.js:564), so an empty string
-    // would still silently drop the event. 'Unknown' is semantically honest (MCP
+    // would still silently drop the event. 'Unknown' is semantically honest (UCP
     // genuinely omits vendor) and avoids inventing a plausible-but-wrong real name.
     vendor: 'Unknown',
     descriptionHtml: rawProduct.description?.html,
     priceRange: {
       min: priceMin
-        ? normalizeSearchCatalogMoney(priceMin)
+        ? normalizeUcpMoney(priceMin)
         : {amount: '0.00', currencyCode: 'USD'},
       max: priceMax
-        ? normalizeSearchCatalogMoney(priceMax)
+        ? normalizeUcpMoney(priceMax)
         : {amount: '0.00', currencyCode: 'USD'},
     },
     image: extractCatalogImage(rawProduct),
@@ -217,91 +188,55 @@ export function normalizeCatalogProducts(rawProducts) {
 }
 
 /**
- * Normalizes a raw get_product_details product to AssistantProduct.
- * Uses the DECIMAL STRING price path.
+ * Normalizes a raw UCP cart object (from create_cart / update_cart
+ * `structuredContent.cart`) to AssistantCart.
  *
- * PROBED shape:
- *   price_range = {min: "949.95", max: "949.95", currency: "USD"}
- *   (currency is a sibling of min/max — NOT nested inside min)
+ * UCP cart total shape (§6.5, AL-UCP-5, required change #7 — REWRITE from
+ * the retired `rawCart.cost.total_amount` path, which does not exist in
+ * UCP): pricing lives in `rawCart.totals[]`, an array of
+ * `{type, amount, display_text}` minor-unit entries. The grand total is the
+ * entry with `type === "total"`. Per the UCP printer contract, the array is
+ * NOT reordered/recomputed/filtered/aggregated here — this normalizer only
+ * SELECTS the "total" entry for the single-total Phase-1 UI; it does not
+ * rebuild the array.
  *
- * @param {object} rawProduct - the .product object from get_product_details response
- * @returns {AssistantProduct}
+ * @param {object} rawCart - structuredContent.cart
+ * @returns {AssistantCart}
  */
-export function normalizeProductDetail(rawProduct) {
-  const priceRange = rawProduct.price_range ?? {};
-  // PROBED: currency is a sibling field of min/max (structural difference from catalog path)
-  const currency = priceRange.currency ?? 'USD';
-
-  const variant = rawProduct.selectedOrFirstAvailableVariant;
-  const firstVariantId = variant?.variant_id ?? undefined;
-  // Map variant title for the Analytics Contract.
-  // PROBED probe 4: selectedOrFirstAvailableVariant.title = "Default Title" is present.
-  // Hydrogen validates: if (!product.variantTitle) { ... return false; }
-  // Source: @shopify/hydrogen/dist/development/index.js:572
-  // Use || (not ??) so empty string also falls back.
-  const firstVariantTitle = variant?.title || 'Default Title';
-  const available = variant?.available ?? true;
-
-  let image;
-  if (Array.isArray(rawProduct.images) && rawProduct.images.length > 0) {
-    const first = rawProduct.images[0];
-    if (first && first.url) {
-      image = {
-        url: first.url,
-        altText: first.alt_text || rawProduct.title || '',
-      };
-    }
-  } else if (rawProduct.image_url) {
-    // Fallback: flat image_url when images[] is absent
-    image = {
-      url: rawProduct.image_url,
-      altText: rawProduct.title || '',
-    };
-  }
+export function normalizeCart(rawCart) {
+  const totals = Array.isArray(rawCart.totals) ? rawCart.totals : [];
+  const totalEntry = totals.find((t) => t.type === 'total');
+  const currencyCode = rawCart.currency ?? totalEntry?.currency ?? 'USD';
 
   return {
-    id: rawProduct.product_id,
-    title: rawProduct.title,
-    // MCP get_product_details does not expose a vendor field (PROBED probe 4).
-    // 'Unknown' is truthy — Hydrogen Analytics validates with `if (!product.vendor)`
-    // (source: @shopify/hydrogen/dist/development/index.js:564), so an empty string
-    // would still silently drop the event. 'Unknown' is semantically honest (MCP
-    // genuinely omits vendor) and avoids inventing a plausible-but-wrong real name.
-    vendor: 'Unknown',
-    descriptionHtml: rawProduct.description,
-    priceRange: {
-      min: normalizeProductDetailsMoney(priceRange.min ?? '0.00', currency),
-      max: normalizeProductDetailsMoney(priceRange.max ?? '0.00', currency),
-    },
-    image,
-    firstVariantId,
-    firstVariantTitle,
-    available,
+    id: rawCart.id,
+    totalAmount: totalEntry
+      ? normalizeUcpMoney({amount: totalEntry.amount, currency: currencyCode})
+      : // Anti-Stubbing: this is a genuine "no total available" state (the
+        // totals[] array had no "total" entry), not fabricated data.
+        {amount: '0.00', currencyCode},
+    lineCount: Array.isArray(rawCart.line_items)
+      ? rawCart.line_items.reduce(
+          (sum, line) => sum + (Number(line.quantity) || 0),
+          0,
+        )
+      : 0,
+    checkoutUrl: rawCart.continue_url ?? undefined,
   };
 }
 
 /**
- * Normalizes a raw cart object from update_cart / get_cart to AssistantCart.
- * Uses the DECIMAL STRING price path.
+ * Normalizes a raw UCP checkout object (from create_checkout
+ * `structuredContent`, which IS the checkout object — no nested `.checkout`
+ * key) to AssistantCheckout. Used only on the fallback handoff path (§3.5),
+ * when the cart's own `continue_url` is absent.
  *
- * PROBED shape:
- *   cart.cost.total_amount = {amount: "949.95", currency: "USD"}
- *   (nested {amount, currency} — decimal string, same key structure as catalog money
- *    but amount is already a major-unit decimal, not minor-unit integer)
- *
- * @param {object} rawCart
- * @returns {AssistantCart}
+ * @param {object} rawCheckout - structuredContent (flat checkout shape)
+ * @returns {AssistantCheckout}
  */
-export function normalizeCart(rawCart) {
-  const totalAmount = rawCart.cost?.total_amount;
+export function normalizeCheckout(rawCheckout) {
   return {
-    id: rawCart.id,
-    totalAmount: totalAmount
-      ? normalizeCartMoney(totalAmount)
-      : {amount: '0.00', currencyCode: 'USD'},
-    lineCount:
-      rawCart.total_quantity ??
-      (Array.isArray(rawCart.lines) ? rawCart.lines.length : 0),
-    checkoutUrl: rawCart.checkout_url ?? undefined,
+    id: rawCheckout.id,
+    checkoutUrl: rawCheckout.continue_url ?? undefined,
   };
 }

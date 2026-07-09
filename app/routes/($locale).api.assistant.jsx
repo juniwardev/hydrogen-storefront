@@ -3,14 +3,15 @@ import {json} from '@shopify/remix-oxygen';
 import {ASSISTANT_RESULT_LIMIT} from '~/lib/const';
 import {
   McpError,
-  getProductDetails,
+  createCart,
+  createCheckout,
   searchCatalog,
   updateCart,
 } from '~/lib/mcp.server';
 import {
-  normalizeCatalogProducts,
   normalizeCart,
-  normalizeProductDetail,
+  normalizeCatalogProducts,
+  normalizeCheckout,
 } from '~/lib/mcp-normalize';
 
 /** @typedef {import('@shopify/remix-oxygen').ActionFunctionArgs} ActionFunctionArgs */
@@ -18,21 +19,26 @@ import {
 /**
  * POST /api/assistant (and locale-prefixed equivalents).
  *
- * Request (form-encoded): {intent, message?, productId?, variantId?, cartId?}
+ * Request (form-encoded): {intent, message?, variantId?, cartId?}
  *
  * Response (JSON):
- *   {reply: string, products?: AssistantProduct[], productDetail?: AssistantProduct,
+ *   {reply: string, products?: AssistantProduct[],
  *    cart?: AssistantCart, cartReset?: boolean, error?: {type, message, retryAfterMs?}}
  *
  * Design constraints:
- * - ALL MCP calls are server-side only. The browser never receives endpoint URLs
- *   or raw MCP payloads.
+ * - ALL MCP calls are server-side only. The browser never receives endpoint URLs,
+ *   the storefront password, the session cookie, or raw MCP payloads.
  * - `error` is returned ONLY for genuine failures. A successful search that
  *   returns zero products yields {products: []} with NO error (required change #2).
  *   Empty results and error states are never conflated.
- * - Stale-cart path (required change #4): if updateCart fails with a cart_id error,
- *   the action clears the stored cartId and retries once without it (fresh cart),
- *   then sets cartReset:true so the UI can show "started a new cart".
+ * - Stale-cart path (required change #4): if createCart/updateCart fails with a
+ *   cart_id error, the action clears the stored cartId and retries once without it
+ *   (fresh cart via createCart), then sets cartReset:true so the UI can show
+ *   "started a new cart".
+ * - "detail" intent removed in the UCP migration (plan §9.1 step 7a, §6.7a):
+ *   the retired /api/mcp get_product_details tool has no UCP Phase-1 equivalent
+ *   wired here (UCP's get_product is a Phase-2 candidate). A client that still
+ *   POSTs intent:"detail" falls through to the default/unknown-intent branch.
  *
  * @param {ActionFunctionArgs}
  */
@@ -46,14 +52,23 @@ export async function action({request, params, context}) {
     throw new Response(null, {status: 404});
   }
 
-  // 2. Config guard — read PUBLIC_STORE_DOMAIN from context.env, not a global.
+  // 2. Config guard — read PUBLIC_STORE_DOMAIN and the UCP config from
+  // context.env, not a global. Per the operator clarification on plan §5.2,
+  // the agent profile URL is an env var (PUBLIC_UCP_AGENT_PROFILE_URL), read
+  // the same way PUBLIC_STORE_DOMAIN / PUBLIC_STOREFRONT_API_TOKEN are read
+  // elsewhere. DEV_STOREFRONT_PASSWORD is DEV-ONLY and may be legitimately
+  // absent in production (§3.4) — its absence is handled inside
+  // mcp.server.js's callTool() as a loud config_error, not here.
   const storeDomain = context.env.PUBLIC_STORE_DOMAIN;
-  if (!storeDomain) {
+  const profileUrl = context.env.PUBLIC_UCP_AGENT_PROFILE_URL;
+  const password = context.env.DEV_STOREFRONT_PASSWORD;
+
+  if (!storeDomain || !profileUrl) {
     return json(
       {
         error: {
           type: 'config_error',
-          message: 'Store domain is not configured.',
+          message: 'The shopping assistant is not configured.',
         },
       },
       {status: 500},
@@ -67,14 +82,20 @@ export async function action({request, params, context}) {
   const message = String(formData.get('message') ?? '')
     .trim()
     .slice(0, 500);
-  const productId = String(formData.get('productId') ?? '');
   const variantId = String(formData.get('variantId') ?? '');
   // Treat empty string as "no cartId" — only pass a truthy cartId to MCP.
   const cartId = String(formData.get('cartId') ?? '') || null;
 
+  const mcpBase = {storeDomain, password, profileUrl};
+
   try {
     switch (intent) {
       case 'search': {
+        // search_catalog's `catalog` object has no schema-required fields
+        // (neither `query` nor `filters` is schema-required — the server
+        // enforces "at least one" at runtime, not via schema validation).
+        // This guard remains necessary: schema validation will NOT catch an
+        // empty query for us (plan §5.3 change #4 note).
         if (!message) {
           return json({
             error: {
@@ -85,7 +106,7 @@ export async function action({request, params, context}) {
         }
 
         const result = await searchCatalog({
-          storeDomain,
+          ...mcpBase,
           query: message,
           limit: ASSISTANT_RESULT_LIMIT,
         });
@@ -106,23 +127,6 @@ export async function action({request, params, context}) {
         });
       }
 
-      case 'detail': {
-        if (!productId) {
-          return json({
-            error: {
-              type: 'validation_error',
-              message: 'Product ID is required.',
-            },
-          });
-        }
-
-        const raw = await getProductDetails({storeDomain, productId});
-        return json({
-          reply: 'Here are the product details.',
-          productDetail: normalizeProductDetail(raw),
-        });
-      }
-
       case 'add': {
         if (!variantId) {
           return json({
@@ -133,38 +137,104 @@ export async function action({request, params, context}) {
           });
         }
 
-        const addItems = [{product_variant_id: variantId, quantity: 1}];
+        const newLine = {variantId, quantity: 1};
 
         try {
-          const result = await updateCart({
-            storeDomain,
-            cartId: cartId ?? undefined,
-            addItems,
+          const result = cartId
+            ? // Full-replace semantics (§6.4): update_cart replaces the
+              // ENTIRE line-item set. Phase 1 keeps the assistant cart
+              // simple (typically one item at a time via this flow), but
+              // if a future turn tracks multiple lines client-side they
+              // MUST be carried forward here alongside newLine, or they
+              // will be silently dropped by the full-replace semantics.
+              await updateCart({
+                ...mcpBase,
+                cartId,
+                lineItems: [newLine],
+              })
+            : await createCart({...mcpBase, lineItems: [newLine]});
+
+          const cart = result.cart ? normalizeCart(result.cart) : null;
+          if (!cart) {
+            // Business-outcome failure without a thrown tool_error (defensive —
+            // not observed live, but the messages[] contract allows it).
+            return json({
+              error: {
+                type: 'tool_error',
+                message: 'The assistant ran into a problem. Please try again.',
+              },
+            });
+          }
+
+          const reply = 'Added to your assistant cart — checkout here.';
+
+          // Handoff URL: prefer the cart's own continue_url (§3.5, AL-UCP-6).
+          // Only call create_checkout as a fallback when the cart response
+          // does not expose a usable checkoutUrl.
+          if (cart.checkoutUrl) {
+            return json({reply, cart});
+          }
+
+          const checkoutResult = await createCheckout({
+            ...mcpBase,
+            cartId: cart.id,
+            lineItems: [newLine],
           });
-          const cart = normalizeCart(result.cart);
+          const checkout = checkoutResult.checkout
+            ? normalizeCheckout(checkoutResult.checkout)
+            : null;
+
           return json({
-            reply: 'Added to your assistant cart — checkout here.',
-            cart,
+            reply,
+            cart: {...cart, checkoutUrl: checkout?.checkoutUrl},
           });
         } catch (addErr) {
-          // Stale-cart path (required change #4, PROBED probe 6):
-          // If the submitted cartId caused a tool_error referencing cart_id,
-          // clear it and create a fresh cart by retrying without cart_id.
+          // Stale-cart path (required change #4): if the submitted cartId
+          // caused a tool_error referencing an invalid/stale cart_id, clear
+          // it and create a fresh cart by retrying without cart_id.
           if (
             addErr instanceof McpError &&
             addErr.code === 'tool_error' &&
             cartId &&
             isCartIdError(addErr)
           ) {
-            const retryResult = await updateCart({
-              storeDomain,
-              cartId: undefined,
-              addItems,
+            const retryResult = await createCart({
+              ...mcpBase,
+              lineItems: [newLine],
             });
-            const cart = normalizeCart(retryResult.cart);
+            const cart = retryResult.cart
+              ? normalizeCart(retryResult.cart)
+              : null;
+            if (!cart) {
+              return json({
+                error: {
+                  type: 'tool_error',
+                  message:
+                    'The assistant ran into a problem. Please try again.',
+                },
+              });
+            }
+
+            if (cart.checkoutUrl) {
+              return json({
+                reply: 'Started a new cart and added the item — checkout here.',
+                cart,
+                cartReset: true,
+              });
+            }
+
+            const checkoutResult = await createCheckout({
+              ...mcpBase,
+              cartId: cart.id,
+              lineItems: [newLine],
+            });
+            const checkout = checkoutResult.checkout
+              ? normalizeCheckout(checkoutResult.checkout)
+              : null;
+
             return json({
               reply: 'Started a new cart and added the item — checkout here.',
-              cart,
+              cart: {...cart, checkoutUrl: checkout?.checkoutUrl},
               cartReset: true,
             });
           }
@@ -206,9 +276,11 @@ export async function action({request, params, context}) {
 
 /**
  * Detects whether an McpError is caused by a stale or invalid cart_id.
- * PROBED probe 6: two failure shapes —
- *   - Invalid GID format → payload is a string containing "cart_id"
- *   - Valid but non-existent → payload.errors[].field includes "cart_id"
+ * PROBED live (2026-07-08): UCP business errors surface as
+ * `structuredContent.messages[]` entries, e.g.
+ *   {type:"error", code:"invalid_cart_id", content:"Invalid id format. Expected
+ *    a Shopify Cart GID...", severity:"unrecoverable"}
+ * for both a malformed GID and (per Dev MCP) a well-formed-but-nonexistent one.
  *
  * @param {McpError} mcpError
  * @returns {boolean}
@@ -217,27 +289,26 @@ function isCartIdError(mcpError) {
   const payload = mcpError.detail?.payload;
   if (!payload) return false;
 
-  // String payload (e.g. "Invalid cart_id format...")
-  if (typeof payload === 'string') {
-    const lower = payload.toLowerCase();
-    return lower.includes('cart_id') || lower.includes('does not exist');
-  }
-
-  // Object payload with errors[] (e.g. {errors: [{field: ['cart_id'], message: '...'}]})
-  const errors = Array.isArray(payload.errors) ? payload.errors : [];
-  return errors.some((e) => {
-    const fields = Array.isArray(e.field) ? e.field : [String(e.field ?? '')];
-    const msg = String(e.message ?? '').toLowerCase();
+  const messages = Array.isArray(payload.messages) ? payload.messages : [];
+  return messages.some((m) => {
+    const code = String(m.code ?? '').toLowerCase();
+    const content = String(m.content ?? '').toLowerCase();
     return (
-      fields.some((f) => String(f).includes('cart_id')) ||
-      msg.includes('does not exist') ||
-      msg.includes('invalid cart_id')
+      code.includes('cart_id') ||
+      content.includes('cart_id') ||
+      content.includes('cart gid') ||
+      content.includes('does not exist')
     );
   });
 }
 
 /**
  * Maps an McpError to the user-facing error shape.
+ *
+ * Rate-limit handling (§6.5, AL-UCP-13, required change #5): retryAfterMs is
+ * surfaced regardless of whether the -32000-in-body path or the HTTP-429
+ * path produced the McpError — both paths populate err.detail.retryAfterMs
+ * identically in mcp.server.js's callTool().
  *
  * @param {McpError} err
  * @returns {{type: string, message: string, retryAfterMs?: number}}
@@ -264,6 +335,11 @@ function mapMcpError(err) {
       return {
         type: 'http_error',
         message: 'Unable to reach the shopping service.',
+      };
+    case 'config_error':
+      return {
+        type: 'config_error',
+        message: 'The shopping assistant is not configured.',
       };
     default:
       return {type: err.code, message: 'An error occurred. Please try again.'};

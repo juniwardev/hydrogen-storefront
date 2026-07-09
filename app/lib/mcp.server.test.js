@@ -1,390 +1,408 @@
 /**
- * Unit tests for mcp.server.js (callTool) and mcp-normalize.js (normalizers).
+ * Unit tests for mcp.server.js (callTool) — UCP MCP envelope + rate-limit handling.
  * Uses Node's built-in test runner — zero new dependencies.
  *
  * Run: node --test app/lib/mcp.server.test.js
+ *   or: npm run test:unit
  *
- * The 429/Retry-After test is MANDATORY per reviewer (required change #3 / §8.4).
- * The two-path normalizer test is also MANDATORY per reviewer (AL-21).
+ * Mandatory coverage per plan (§9.1 step 9, §10.4, required changes #5):
+ *   - structuredContent (primary) envelope parse
+ *   - content[0].text defensive fallback parse
+ *   - HTTP 429 + Retry-After → rate_limited
+ *   - JSON-RPC -32000-in-a-200-body + Retry-After → rate_limited (this is the
+ *     gap the retired /api/mcp callTool had: it threw on HTTP 429 BEFORE
+ *     parsing the body, so a -32000 rate-limit body would have been
+ *     mis-mapped as a generic rpc_error)
+ *   - tool_error (business outcome, result.isError true)
+ *
+ * callTool now requires storeDomain/password/profileUrl (UCP Component
+ * Contract + DEV-ONLY shim) in addition to name/args, so every fixture below
+ * supplies a fake fetchImpl that ALSO serves the ucp-auth.server.js
+ * GET/POST /password round trip the shim performs internally.
  */
 
 import {test, describe} from 'node:test';
 import assert from 'node:assert/strict';
 
 import {callTool, McpError} from './mcp.server.js';
-import {
-  minorUnitsToDecimalString,
-  normalizeCatalogProduct,
-  normalizeProductDetail,
-  normalizeCart,
-} from './mcp-normalize.js';
+import {__resetForTests} from './ucp-auth.server.js';
 
-// ---------------------------------------------------------------------------
-// callTool — 429 / Retry-After branch (MANDATORY, §8.4)
-// ---------------------------------------------------------------------------
+const FAKE_PASSWORD_PAGE = `
+<form action="/password" method="post">
+  <input type="hidden" name="authenticity_token" value="test-token">
+  <input type="password" name="password">
+</form>
+`;
 
-describe('callTool 429 / rate-limit handling', () => {
-  test('throws rate_limited McpError with retryAfterMs in ms when Retry-After header is present', async () => {
-    const fakeFetch = async () =>
-      new Response(null, {
-        status: 429,
-        headers: new Headers({'Retry-After': '2'}),
+/**
+ * Builds a fetchImpl that transparently serves the /password shim round trip
+ * (GET page + POST mint) and delegates any other request to `handleMcpCall`.
+ *
+ * @param {(url: string, init: object) => Promise<Response>} handleMcpCall
+ */
+function withPasswordShim(handleMcpCall) {
+  return async (url, init) => {
+    const method = init?.method ?? 'GET';
+    if (typeof url === 'string' && url.includes('/password')) {
+      if (method === 'GET') {
+        return new Response(FAKE_PASSWORD_PAGE, {status: 200});
+      }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: '/',
+          'Set-Cookie':
+            '_shopify_essential=fake-cookie; Max-Age=31536000; Path=/; HttpOnly; Secure; SameSite=Lax',
+        },
       });
+    }
+    return handleMcpCall(url, init);
+  };
+}
 
+const BASE_OPTS = {
+  storeDomain: 'example.myshopify.com',
+  password: 'dev-password',
+  profileUrl:
+    'https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json',
+  name: 'search_catalog',
+  args: {catalog: {query: 'snowboard'}},
+};
+
+describe('callTool — config gate', () => {
+  test('throws config_error McpError when password is absent (DEV-ONLY hard gate)', async () => {
     await assert.rejects(
       () =>
         callTool({
-          endpoint: 'https://example.com/api/mcp',
-          name: 'search_catalog',
-          args: {},
-          fetchImpl: fakeFetch,
+          ...BASE_OPTS,
+          password: undefined,
+          fetchImpl: withPasswordShim(
+            async () => new Response(null, {status: 200}),
+          ),
         }),
       (err) => {
-        assert(err instanceof McpError, 'error must be an McpError');
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
+        return true;
+      },
+    );
+  });
+});
+
+describe('callTool — UCP envelope parsing', () => {
+  test('__resetForTests before each envelope test', () => {
+    __resetForTests();
+  });
+
+  test('parses result.structuredContent as the primary payload', async () => {
+    __resetForTests();
+    const successPayload = {
+      products: [{id: 'gid://shopify/Product/1', title: 'Test'}],
+    };
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              structuredContent: successPayload,
+              content: [{type: 'text', text: JSON.stringify(successPayload)}],
+              isError: false,
+            },
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+
+    const result = await callTool({...BASE_OPTS, fetchImpl});
+    assert.deepEqual(result, successPayload);
+  });
+
+  test('falls back to content[0].text when structuredContent is absent', async () => {
+    __resetForTests();
+    const successPayload = {products: []};
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              content: [{type: 'text', text: JSON.stringify(successPayload)}],
+              isError: false,
+            },
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+
+    const result = await callTool({...BASE_OPTS, fetchImpl});
+    assert.deepEqual(result, successPayload);
+  });
+
+  test('throws tool_error McpError when result.isError is true (business outcome)', async () => {
+    __resetForTests();
+    const errorPayload = {
+      ucp: {status: 'error'},
+      messages: [{type: 'error', code: 'invalid_cart_id', content: 'bad id'}],
+    };
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {
+              structuredContent: errorPayload,
+              isError: true,
+            },
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+
+    await assert.rejects(
+      () => callTool({...BASE_OPTS, name: 'update_cart', fetchImpl}),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'tool_error');
+        assert.deepEqual(err.detail.payload, errorPayload);
+        return true;
+      },
+    );
+  });
+
+  test('injects meta.ucp-agent.profile into the tools/call request body', async () => {
+    __resetForTests();
+    let capturedBody;
+    const fetchImpl = withPasswordShim(async (url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {structuredContent: {products: []}, isError: false},
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    });
+
+    await callTool({...BASE_OPTS, fetchImpl});
+
+    assert.equal(
+      capturedBody.params.arguments.meta['ucp-agent'].profile,
+      BASE_OPTS.profileUrl,
+    );
+  });
+
+  test('attaches the shim Cookie header to the /api/ucp/mcp request', async () => {
+    __resetForTests();
+    let capturedHeaders;
+    const fetchImpl = withPasswordShim(async (url, init) => {
+      capturedHeaders = init.headers;
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {structuredContent: {products: []}, isError: false},
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    });
+
+    await callTool({...BASE_OPTS, fetchImpl});
+
+    assert.equal(capturedHeaders.Cookie, '_shopify_essential=fake-cookie');
+  });
+});
+
+describe('callTool — rate-limit handling (required change #5)', () => {
+  test('HTTP 429 path: throws rate_limited McpError with retryAfterMs in ms', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(null, {
+          status: 429,
+          headers: new Headers({'Retry-After': '2'}),
+        }),
+    );
+
+    await assert.rejects(
+      () => callTool({...BASE_OPTS, fetchImpl}),
+      (err) => {
+        assert(err instanceof McpError);
         assert.equal(err.code, 'rate_limited');
-        // Retry-After: 2 seconds → retryAfterMs: 2000
+        assert.equal(err.detail.retryAfterMs, 2000);
+        return true;
+      },
+    );
+  });
+
+  test('HTTP 429 path: retryAfterMs defaults to 0 when Retry-After header is absent', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () => new Response(null, {status: 429}),
+    );
+
+    await assert.rejects(
+      () => callTool({...BASE_OPTS, fetchImpl}),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'rate_limited');
+        assert.equal(err.detail.retryAfterMs, 0);
+        return true;
+      },
+    );
+  });
+
+  test('-32000-in-body path (MANDATORY, change #5): a 200 response with a JSON-RPC -32000 error AND a Retry-After header maps to rate_limited with retryAfterMs, NOT a generic rpc_error', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            error: {code: -32000, message: 'Rate limit exceeded'},
+          }),
+          {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Retry-After': '5',
+            },
+          },
+        ),
+    );
+
+    await assert.rejects(
+      () => callTool({...BASE_OPTS, fetchImpl}),
+      (err) => {
+        assert(err instanceof McpError, 'error must be an McpError');
+        assert.equal(
+          err.code,
+          'rate_limited',
+          'a -32000 body must map to rate_limited, not rpc_error — this is the exact gap the retired /api/mcp callTool had',
+        );
         assert.equal(
           err.detail.retryAfterMs,
-          2000,
-          'seconds must be converted to ms',
+          5000,
+          'Retry-After must be honored in the -32000-in-body path too, not just the HTTP-429 path',
         );
         return true;
       },
     );
   });
 
-  test('throws rate_limited McpError with retryAfterMs=0 when Retry-After header is absent', async () => {
-    const fakeFetch = async () =>
-      new Response(null, {
-        status: 429,
-        // No Retry-After header
-      });
+  test('-32000-in-body path: retryAfterMs defaults to 0 when Retry-After header is absent', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            error: {code: -32000, message: 'Rate limit exceeded'},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
 
     await assert.rejects(
-      () =>
-        callTool({
-          endpoint: 'https://example.com/api/mcp',
-          name: 'search_catalog',
-          args: {},
-          fetchImpl: fakeFetch,
-        }),
+      () => callTool({...BASE_OPTS, fetchImpl}),
       (err) => {
-        assert(err instanceof McpError, 'error must be an McpError');
+        assert(err instanceof McpError);
         assert.equal(err.code, 'rate_limited');
-        assert.equal(
-          err.detail.retryAfterMs,
-          0,
-          'missing Retry-After must default to 0ms',
-        );
+        assert.equal(err.detail.retryAfterMs, 0);
         return true;
       },
     );
   });
 
-  test('throws http_error McpError for non-200 non-429 status', async () => {
-    const fakeFetch = async () => new Response(null, {status: 503});
+  test('non-rate-limit JSON-RPC error (e.g. -32603) still maps to generic rpc_error', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            error: {code: -32603, message: 'Internal error'},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
 
     await assert.rejects(
-      () =>
-        callTool({
-          endpoint: 'https://example.com/api/mcp',
-          name: 'search_catalog',
-          args: {},
-          fetchImpl: fakeFetch,
-        }),
+      () => callTool({...BASE_OPTS, fetchImpl}),
       (err) => {
-        assert(err instanceof McpError, 'error must be an McpError');
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'rpc_error');
+        return true;
+      },
+    );
+  });
+
+  test('non-429 HTTP error status throws http_error McpError', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () => new Response(null, {status: 503}),
+    );
+
+    await assert.rejects(
+      () => callTool({...BASE_OPTS, fetchImpl}),
+      (err) => {
+        assert(err instanceof McpError);
         assert.equal(err.code, 'http_error');
         assert.equal(err.detail.status, 503);
         return true;
       },
     );
   });
+});
 
-  test('returns parsed payload for a successful 200 response', async () => {
-    const successPayload = {
-      products: [{id: 'gid://shopify/Product/1', title: 'Test'}],
-    };
-    const fakeFetch = async () =>
-      new Response(
+describe('callTool — 302 password-gate retry', () => {
+  test('a 302 response triggers exactly one invalidate-and-remint retry, then succeeds', async () => {
+    __resetForTests();
+    let mcpCallCount = 0;
+    const fetchImpl = withPasswordShim(async () => {
+      mcpCallCount += 1;
+      if (mcpCallCount === 1) {
+        return new Response(null, {
+          status: 302,
+          headers: {Location: '/password'},
+        });
+      }
+      return new Response(
         JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
-          result: {
-            content: [{text: JSON.stringify(successPayload)}],
-            isError: false,
-          },
+          result: {structuredContent: {products: []}, isError: false},
         }),
         {status: 200, headers: {'Content-Type': 'application/json'}},
       );
-
-    const result = await callTool({
-      endpoint: 'https://example.com/api/mcp',
-      name: 'search_catalog',
-      args: {},
-      fetchImpl: fakeFetch,
     });
 
-    assert.deepEqual(result, successPayload);
+    const result = await callTool({...BASE_OPTS, fetchImpl});
+    assert.deepEqual(result, {products: []});
+    assert.equal(mcpCallCount, 2, 'must retry exactly once after a 302');
   });
 
-  test('throws tool_error McpError when result.isError is true', async () => {
-    const toolErrorPayload = {
-      errors: [{field: ['cart_id'], message: 'does not exist'}],
-    };
-    const fakeFetch = async () =>
-      new Response(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          result: {
-            content: [{text: JSON.stringify(toolErrorPayload)}],
-            isError: true,
-          },
-        }),
-        {status: 200, headers: {'Content-Type': 'application/json'}},
-      );
+  test('a persistent 302 after the bounded retry throws config_error (not an infinite loop)', async () => {
+    __resetForTests();
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(null, {status: 302, headers: {Location: '/password'}}),
+    );
 
     await assert.rejects(
-      () =>
-        callTool({
-          endpoint: 'https://example.com/api/mcp',
-          name: 'update_cart',
-          args: {},
-          fetchImpl: fakeFetch,
-        }),
+      () => callTool({...BASE_OPTS, fetchImpl}),
       (err) => {
-        assert(err instanceof McpError, 'error must be an McpError');
-        assert.equal(err.code, 'tool_error');
-        assert.deepEqual(err.detail.payload, toolErrorPayload);
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
         return true;
       },
     );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// minorUnitsToDecimalString — unit helper for the catalog price path
-// ---------------------------------------------------------------------------
-
-describe('minorUnitsToDecimalString', () => {
-  test('converts USD minor units to decimal string', () => {
-    assert.equal(minorUnitsToDecimalString(94995, 'USD'), '949.95');
-    assert.equal(minorUnitsToDecimalString(100, 'USD'), '1.00');
-    assert.equal(minorUnitsToDecimalString(0, 'USD'), '0.00');
-  });
-
-  test('does NOT divide for zero-decimal currencies (JPY, KRW)', () => {
-    // 1000 JPY should stay 1000, not become 10.00
-    assert.equal(minorUnitsToDecimalString(1000, 'JPY'), '1000');
-    assert.equal(minorUnitsToDecimalString(1500, 'KRW'), '1500');
-  });
-
-  test('applies default 2-decimal exponent for unknown currencies', () => {
-    // Unknown currency defaults to 2 decimal places
-    assert.equal(minorUnitsToDecimalString(5000, 'XYZ'), '50.00');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// TWO-PATH PRICE NORMALIZATION (MANDATORY per reviewer, AL-21)
-// Catalog integer path vs. detail/cart decimal-string path must NOT cross-contaminate.
-// A wrong branch renders prices 100x off (e.g. $949.95 as $94,995.00 or $9.50).
-// ---------------------------------------------------------------------------
-
-describe('normalizeCatalogProduct — integer minor units path (PROBED probe 3)', () => {
-  const rawCatalogProduct = {
-    id: 'gid://shopify/Product/9356161155292',
-    title: 'The Inventory Not Tracked Snowboard',
-    description: {html: '<p>Description</p>'},
-    price_range: {
-      // PROBED: integer minor units, nested {amount, currency}
-      min: {amount: 94995, currency: 'USD'},
-      max: {amount: 94995, currency: 'USD'},
-    },
-    variants: [
-      {
-        id: 'gid://shopify/ProductVariant/50239738609884',
-        availability: {available: true},
-      },
-    ],
-    media: [
-      {
-        type: 'image',
-        url: 'https://cdn.shopify.com/s/files/snowboard.png',
-        alt_text: 'Top and bottom view',
-      },
-    ],
-  };
-
-  test('converts integer minor units to decimal string (not 100x too large)', () => {
-    const product = normalizeCatalogProduct(rawCatalogProduct);
-    // 94995 minor units → "949.95" major units
-    assert.equal(
-      product.priceRange.min.amount,
-      '949.95',
-      'min price must be decimal, not minor-unit integer',
-    );
-    assert.equal(product.priceRange.max.amount, '949.95');
-  });
-
-  test('renames currency → currencyCode', () => {
-    const product = normalizeCatalogProduct(rawCatalogProduct);
-    assert.equal(product.priceRange.min.currencyCode, 'USD');
-  });
-
-  test('maps firstVariantId from variants[0].id', () => {
-    const product = normalizeCatalogProduct(rawCatalogProduct);
-    assert.equal(
-      product.firstVariantId,
-      'gid://shopify/ProductVariant/50239738609884',
-    );
-  });
-
-  test('maps image from product-level media with alt_text field', () => {
-    const product = normalizeCatalogProduct(rawCatalogProduct);
-    assert.ok(product.image, 'image must be present');
-    assert.equal(
-      product.image.url,
-      'https://cdn.shopify.com/s/files/snowboard.png',
-    );
-    assert.equal(product.image.altText, 'Top and bottom view');
-  });
-});
-
-describe('normalizeProductDetail — decimal string path (PROBED probe 4)', () => {
-  const rawDetail = {
-    product_id: 'gid://shopify/Product/9356161155292',
-    title: 'The Inventory Not Tracked Snowboard',
-    description: 'A description',
-    url: null,
-    image_url: 'https://cdn.shopify.com/s/files/snowboard.png',
-    images: [
-      {
-        url: 'https://cdn.shopify.com/s/files/snowboard.png',
-        alt_text: 'Top and bottom',
-      },
-    ],
-    price_range: {
-      // PROBED: decimal strings, currency is a SIBLING of min/max (not nested)
-      min: '949.95',
-      max: '949.95',
-      currency: 'USD',
-    },
-    selectedOrFirstAvailableVariant: {
-      variant_id: 'gid://shopify/ProductVariant/50239738609884',
-      price: '949.95',
-      currency: 'USD',
-      available: true,
-    },
-  };
-
-  test('passes decimal string amount through unchanged (no division)', () => {
-    const product = normalizeProductDetail(rawDetail);
-    // "949.95" must stay "949.95", not become "9.4995" (÷100) or "94995" (×100)
-    assert.equal(
-      product.priceRange.min.amount,
-      '949.95',
-      'decimal string must not be divided',
-    );
-    assert.equal(product.priceRange.max.amount, '949.95');
-  });
-
-  test('renames currency → currencyCode', () => {
-    const product = normalizeProductDetail(rawDetail);
-    assert.equal(product.priceRange.min.currencyCode, 'USD');
-  });
-
-  test('maps product id from product_id field (not id)', () => {
-    const product = normalizeProductDetail(rawDetail);
-    assert.equal(product.id, 'gid://shopify/Product/9356161155292');
-  });
-
-  test('maps firstVariantId from selectedOrFirstAvailableVariant.variant_id', () => {
-    const product = normalizeProductDetail(rawDetail);
-    assert.equal(
-      product.firstVariantId,
-      'gid://shopify/ProductVariant/50239738609884',
-    );
-  });
-
-  test('maps image from images[] array with alt_text field', () => {
-    const product = normalizeProductDetail(rawDetail);
-    assert.ok(product.image, 'image must be present');
-    assert.equal(product.image.altText, 'Top and bottom');
-  });
-});
-
-describe('normalizeCart — cart decimal string path (PROBED probe 5)', () => {
-  const rawCart = {
-    id: 'gid://shopify/Cart/hWNDolz1',
-    lines: [{id: 'gid://shopify/CartLine/1', quantity: 1}],
-    cost: {
-      // PROBED: nested {amount: "949.95", currency: "USD"} — decimal string
-      total_amount: {amount: '949.95', currency: 'USD'},
-    },
-    total_quantity: 1,
-    checkout_url:
-      'https://theme-evolution-os2-hydrogen.myshopify.com/cart/c/abc',
-  };
-
-  test('passes cart total amount through as decimal string (no division)', () => {
-    const cart = normalizeCart(rawCart);
-    assert.equal(
-      cart.totalAmount.amount,
-      '949.95',
-      'cart total must not be divided',
-    );
-    assert.equal(cart.totalAmount.currencyCode, 'USD');
-  });
-
-  test('carries checkout_url', () => {
-    const cart = normalizeCart(rawCart);
-    assert.equal(
-      cart.checkoutUrl,
-      'https://theme-evolution-os2-hydrogen.myshopify.com/cart/c/abc',
-    );
-  });
-
-  test('uses total_quantity for lineCount', () => {
-    const cart = normalizeCart(rawCart);
-    assert.equal(cart.lineCount, 1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Cross-path isolation — confirm catalog path and detail path don't cross-wire
-// ---------------------------------------------------------------------------
-
-describe('price path isolation — catalog vs detail must not cross-contaminate', () => {
-  test('catalog product at $949.95 renders as "949.95", not "94995.00" or "9.50"', () => {
-    const catalogRaw = {
-      id: 'gid://shopify/Product/1',
-      title: 'Test',
-      price_range: {
-        min: {amount: 94995, currency: 'USD'},
-        max: {amount: 94995, currency: 'USD'},
-      },
-      variants: [],
-      media: [],
-    };
-    const product = normalizeCatalogProduct(catalogRaw);
-    // NOT "94995.00" (forgot to divide) or "9.50" (divided again)
-    assert.equal(product.priceRange.min.amount, '949.95');
-  });
-
-  test('detail product at "949.95" renders as "949.95", not "9.4995" or "94995"', () => {
-    const detailRaw = {
-      product_id: 'gid://shopify/Product/1',
-      title: 'Test',
-      price_range: {min: '949.95', max: '949.95', currency: 'USD'},
-      selectedOrFirstAvailableVariant: {
-        variant_id: 'gid://shopify/ProductVariant/1',
-        available: true,
-      },
-    };
-    const product = normalizeProductDetail(detailRaw);
-    // NOT "9.4995" (÷100 applied to decimal string) or "94995" (treated as integer)
-    assert.equal(product.priceRange.min.amount, '949.95');
   });
 });

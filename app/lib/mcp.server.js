@@ -1,92 +1,169 @@
 /**
- * MCP client — SERVER ONLY.
+ * UCP MCP client — SERVER ONLY.
  *
  * The .server.js suffix is mandatory: Remix/Vite never bundles this module
  * into the client graph. All calls originate from route actions/loaders.
  * Never import this file from a React component.
  *
- * Single endpoint: https://{storeDomain}/api/mcp (PROBED, §0.1).
- * No agent profile, no auth token required for the tools in scope.
+ * Endpoint: https://{storeDomain}/api/ucp/mcp (migrated from the deprecated
+ * /api/mcp per docs/plans/ucp-migration.md). PROBED live 2026-07-08:
+ * search_catalog returns HTTP 200 with `result.structuredContent.products[]`
+ * once the DEV-ONLY cookie shim (./ucp-auth.server.js) clears the storefront
+ * password's 302 redirect. Full probe record: docs/plans/ucp-migration-impl-notes.md.
  *
- * Logging discipline (G4): never log the raw user query or full MCP
- * request/response payloads. Log only coarse error category + status code
- * on error paths to avoid PII leakage.
+ * Every request carries the UCP Component Contract: `meta.ucp-agent.profile`.
+ * The profile URL is read from `context.env.PUBLIC_UCP_AGENT_PROFILE_URL`
+ * (operator clarification on plan §5.2 — env var, not a hardcoded const),
+ * mirroring how PUBLIC_STORE_DOMAIN / PUBLIC_STOREFRONT_API_TOKEN are read
+ * elsewhere in this codebase.
+ *
+ * Logging discipline (G4): never log the raw user query, the storefront
+ * password, the session cookie, or full MCP request/response payloads. Log
+ * only coarse error category + status code on error paths to avoid PII leakage.
  */
 
-import {MCP_TIMEOUT_MS} from './const.js';
+import {MCP_TIMEOUT_MS, UCP_MCP_PATH} from './const.js';
+import {McpError} from './mcp-error.server.js';
+import {
+  ensureStorefrontDigest,
+  invalidateStorefrontDigest,
+} from './ucp-auth.server.js';
 
-const MCP_PATH = '/api/mcp';
+// Re-exported for backward-compatible imports (routes import McpError from
+// here, matching the pre-migration API surface).
+export {McpError};
 
 /**
  * @param {{storeDomain: string}} opts
  * @returns {string}
  */
 function mcpEndpoint({storeDomain}) {
-  return `https://${storeDomain}${MCP_PATH}`;
+  return `https://${storeDomain}${UCP_MCP_PATH}`;
 }
 
 /**
- * Typed error for all MCP failure modes.
+ * Builds the `meta.ucp-agent.profile` Component Contract object required on
+ * every Phase-1 tool call (plan §5.1). `profileUrl` is read by the caller
+ * from `context.env.PUBLIC_UCP_AGENT_PROFILE_URL` — this function does not
+ * read env itself so it stays a pure helper.
  *
- * @typedef {'rate_limited' | 'http_error' | 'rpc_error' | 'tool_error' | 'empty_result' | 'timeout' | 'config_error'} McpErrorCode
+ * @param {string} profileUrl
+ * @returns {{'ucp-agent': {profile: string}}}
  */
-export class McpError extends Error {
-  /**
-   * @param {McpErrorCode} code
-   * @param {object} [detail]
-   */
-  constructor(code, detail = {}) {
-    super(code);
-    this.name = 'McpError';
-    /** @type {McpErrorCode} */
-    this.code = code;
-    this.detail = detail;
-  }
+function buildMeta(profileUrl) {
+  return {'ucp-agent': {profile: profileUrl}};
 }
 
 /**
- * Low-level JSON-RPC tools/call with timeout, 429/Retry-After handling, and
- * error mapping. Parses result.content[0].text (stringified JSON per PROBED
- * envelope) and honors the boolean result.isError flag.
+ * Low-level JSON-RPC tools/call against /api/ucp/mcp with the DEV-ONLY cookie
+ * shim, timeout, and full rate-limit + envelope handling.
  *
- * `fetchImpl` is injectable so the 429/Retry-After branch is unit-testable
- * without a live network (required change #3 / §8.4).
+ * Envelope (§6.2, PROBED): success payload lives in `result.structuredContent`
+ * (primary); `result.content[0].text` may also be present as a stringified
+ * text mirror and is used only as a defensive fallback if structuredContent
+ * is absent. Protocol errors are a top-level JSON-RPC `error` object (code
+ * -32000/-32001/-32603 observed live). Business-outcome errors are a
+ * *successful* result whose `structuredContent.messages[]` contains
+ * type:"error" entries (e.g. invalid cart_id) — those are NOT thrown here;
+ * callers inspect `messages[]` / `ucp.status` themselves (PROBED).
+ *
+ * Rate-limit coverage (§6.5, AL-UCP-13, required change #5): a rate limit can
+ * arrive as a raw HTTP 429 OR as a JSON-RPC `-32000` error in a 200 body.
+ * Both paths read the `Retry-After` header and map to
+ * `McpError('rate_limited', {retryAfterMs})`.
+ *
+ * `fetchImpl` is injectable so both branches are unit-testable without a
+ * live network (§10.4).
  *
  * @param {{
- *   endpoint: string,
+ *   storeDomain: string,
+ *   password: string | undefined,
+ *   profileUrl: string,
  *   name: string,
  *   args: object,
  *   timeoutMs?: number,
  *   fetchImpl?: typeof fetch,
+ *   _isRetry?: boolean,
  * }} opts
- * @returns {Promise<object>} parsed content[0].text payload
+ * @returns {Promise<object>} parsed structuredContent payload
  * @throws {McpError}
  */
 export async function callTool({
-  endpoint,
+  storeDomain,
+  password,
+  profileUrl,
   name,
   args,
   timeoutMs = MCP_TIMEOUT_MS,
   fetchImpl = fetch,
+  _isRetry = false,
 }) {
+  const endpoint = mcpEndpoint({storeDomain});
+
+  // DEV-ONLY shim gate (§3.4): the shim runs only when the password env var
+  // is present. If it is absent, there is no signer configured in Phase 1
+  // (Signed/Token tiers are Phase 2 — §4.4), so raise a loud config error
+  // instead of attempting an unauthenticated call that will 302-loop.
+  if (!password) {
+    throw new McpError('config_error', {
+      reason: 'dev_storefront_password_missing',
+      hint: 'Set DEV_STOREFRONT_PASSWORD in .env.local (dev-only) or configure a Signed-tier request signer (Phase 2, §4.4).',
+    });
+  }
+
+  const cookie = await ensureStorefrontDigest({
+    storeDomain,
+    password,
+    fetchImpl,
+  });
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
     const res = await fetchImpl(endpoint, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: cookie,
+      },
       signal: ctrl.signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
         method: 'tools/call',
         id: 1,
-        params: {name, arguments: args},
+        params: {
+          name,
+          arguments: {meta: buildMeta(profileUrl), ...args},
+        },
       }),
     });
 
+    // A 302 means the cookie was rejected/expired (password gate re-engaged).
+    // Invalidate and retry ONCE with a freshly minted cookie (bounded retry,
+    // AL-UCP-9). A second 302 after a fresh mint is a genuine config/auth
+    // failure, not a loop candidate.
+    if (res.status === 302 || res.status === 301) {
+      if (_isRetry) {
+        throw new McpError('config_error', {
+          reason: 'password_gate_persists_after_remint',
+        });
+      }
+      invalidateStorefrontDigest();
+      return callTool({
+        storeDomain,
+        password,
+        profileUrl,
+        name,
+        args,
+        timeoutMs,
+        fetchImpl,
+        _isRetry: true,
+      });
+    }
+
     if (res.status === 429) {
-      // Retry-After is in SECONDS (HTTP convention, AL-14); convert to ms.
+      // Retry-After is in SECONDS (HTTP convention); convert to ms.
       const retryAfterSec = Number(res.headers.get('Retry-After') ?? 0);
       throw new McpError('rate_limited', {retryAfterMs: retryAfterSec * 1000});
     }
@@ -100,28 +177,46 @@ export async function callTool({
     const data = await res.json();
 
     if (data.error) {
+      // Rate-limit-as-protocol-error path (change #5, AL-UCP-13): UCP can
+      // surface rate limiting as a JSON-RPC -32000 error in a 200 body while
+      // ALSO honoring the HTTP Retry-After header. This branch MUST read
+      // Retry-After here too, not just in the HTTP-429 branch above.
+      if (data.error.code === -32000) {
+        const retryAfterSec = Number(res.headers.get('Retry-After') ?? 0);
+        throw new McpError('rate_limited', {
+          retryAfterMs: retryAfterSec * 1000,
+        });
+      }
       console.error(`[mcp] rpc_error tool=${name} code=${data.error?.code}`); // eslint-disable-line no-console
       throw new McpError('rpc_error', {detail: data.error});
     }
 
     const result = data.result;
-    if (!result || !Array.isArray(result.content) || !result.content[0]) {
+    if (!result) {
       throw new McpError('empty_result', {});
     }
 
-    // PROBED: payload is stringified JSON in content[0].text.
-    // content[1].text is a deprecation notice — ignore it.
-    let payload;
-    try {
-      payload = JSON.parse(result.content[0].text);
-    } catch {
-      throw new McpError('rpc_error', {
-        detail: 'invalid JSON in content[0].text',
-      });
+    // structuredContent is authoritative (§6.2). Fall back defensively to
+    // content[0].text only if structuredContent is absent.
+    let payload = result.structuredContent;
+    if (!payload) {
+      if (Array.isArray(result.content) && result.content[0]?.text) {
+        try {
+          payload = JSON.parse(result.content[0].text);
+        } catch {
+          throw new McpError('rpc_error', {
+            detail: 'invalid JSON in content[0].text fallback',
+          });
+        }
+      } else {
+        throw new McpError('empty_result', {});
+      }
     }
 
     if (result.isError) {
-      // tool_error: payload may carry .errors[] with field/message for stale-cart detection
+      // tool_error: payload carries structuredContent.messages[] with
+      // type:"error" entries (PROBED) for business-outcome failures like an
+      // invalid/stale cart_id or an invalid variant GID.
       throw new McpError('tool_error', {payload});
     }
 
@@ -136,10 +231,12 @@ export async function callTool({
 }
 
 /**
- * Search the MCP product catalog using free-text query.
+ * Search the UCP product catalog using free-text query.
  *
  * @param {{
  *   storeDomain: string,
+ *   password: string | undefined,
+ *   profileUrl: string,
  *   query: string,
  *   context?: {address_country: string, language?: string, currency?: string},
  *   limit?: number,
@@ -149,14 +246,17 @@ export async function callTool({
  */
 export async function searchCatalog({
   storeDomain,
+  password,
+  profileUrl,
   query,
   context,
   limit = 8,
   fetchImpl,
 }) {
-  const endpoint = mcpEndpoint({storeDomain});
   const callOpts = {
-    endpoint,
+    storeDomain,
+    password,
+    profileUrl,
     name: 'search_catalog',
     args: {
       catalog: {
@@ -176,79 +276,174 @@ export async function searchCatalog({
 }
 
 /**
- * Get detailed product information by GID.
+ * Creates a new assistant cart with the given line items.
+ *
+ * UCP `create_cart` argument shape (§5.3): `cart.line_items[].item.id` is the
+ * variant GID — a different nested shape from the retired /api/mcp
+ * `add_items[].product_variant_id`.
+ *
+ * Response shape (PROBED + Dev MCP, corrects an earlier flat-payload
+ * assumption): the cart object is nested at `structuredContent.cart`, NOT
+ * flat at `structuredContent` — unlike search_catalog/create_checkout, whose
+ * payloads ARE the top-level structuredContent object. `cart.continue_url`
+ * and `cart.totals[]` live inside that nested `cart` object.
  *
  * @param {{
  *   storeDomain: string,
- *   productId: string,
+ *   password: string | undefined,
+ *   profileUrl: string,
+ *   lineItems: Array<{variantId: string, quantity: number}>,
  *   fetchImpl?: typeof fetch,
  * }} opts
- * @returns {Promise<object>} raw product detail object
+ * @returns {Promise<{cart: object | null, messages: object[]}>}
  */
-export async function getProductDetails({storeDomain, productId, fetchImpl}) {
-  const endpoint = mcpEndpoint({storeDomain});
+export async function createCart({
+  storeDomain,
+  password,
+  profileUrl,
+  lineItems,
+  fetchImpl,
+}) {
   const callOpts = {
-    endpoint,
-    name: 'get_product_details',
-    // PROBED: flat argument `product_id`, NOT a catalog.id wrapper (probe 4)
-    args: {product_id: productId},
+    storeDomain,
+    password,
+    profileUrl,
+    name: 'create_cart',
+    args: {
+      cart: {
+        line_items: lineItems.map(({variantId, quantity}) => ({
+          item: {id: variantId},
+          quantity,
+        })),
+      },
+    },
   };
   if (fetchImpl) callOpts.fetchImpl = fetchImpl;
 
   const payload = await callTool(callOpts);
-  // PROBED: response shape is {product: {...}}
-  return payload.product ?? payload;
-}
-
-/**
- * Add items to a cart (or create a new cart when cartId is omitted).
- *
- * @param {{
- *   storeDomain: string,
- *   cartId?: string,
- *   addItems: Array<{product_variant_id: string, quantity: number}>,
- *   fetchImpl?: typeof fetch,
- * }} opts
- * @returns {Promise<{cart: object, errors: object[]}>}
- */
-export async function updateCart({storeDomain, cartId, addItems, fetchImpl}) {
-  const endpoint = mcpEndpoint({storeDomain});
-  // PROBED: array key is `add_items`, line-item field is `product_variant_id` (probe 5)
-  const args = {add_items: addItems};
-  if (cartId) args.cart_id = cartId;
-
-  const callOpts = {endpoint, name: 'update_cart', args};
-  if (fetchImpl) callOpts.fetchImpl = fetchImpl;
-
-  const payload = await callTool(callOpts);
+  // Success: structuredContent.cart. Business-error (tool_error) payloads
+  // observed live carry NO .cart key at all (just ucp/messages/continue_url) —
+  // the ?? null fallback keeps the caller's cart-presence check honest rather
+  // than fabricating a cart from the error envelope.
   return {
     cart: payload.cart ?? null,
-    errors: payload.errors ?? [],
+    messages: payload.messages ?? [],
   };
 }
 
 /**
- * Retrieve the current state of a cart.
+ * Full-replace update of an existing assistant cart's line items (§6.4).
+ * UCP `update_cart` is full-replace: callers MUST pass the entire desired
+ * line-item set (existing lines + any new one), not just a delta — this
+ * function does not do that carrying-forward itself; the route action is
+ * responsible for assembling the full set before calling this.
+ *
+ * Cart ID goes on the top-level `id` argument (sibling of `meta`/`cart`),
+ * per the schema (`required: ["meta","cart","id"]`) and Dev MCP examples.
  *
  * @param {{
  *   storeDomain: string,
+ *   password: string | undefined,
+ *   profileUrl: string,
  *   cartId: string,
+ *   lineItems: Array<{variantId: string, quantity: number}>,
  *   fetchImpl?: typeof fetch,
  * }} opts
- * @returns {Promise<{cart: object, errors: object[]}>}
+ * @returns {Promise<{cart: object | null, messages: object[]}>}
  */
-export async function getCart({storeDomain, cartId, fetchImpl}) {
-  const endpoint = mcpEndpoint({storeDomain});
+export async function updateCart({
+  storeDomain,
+  password,
+  profileUrl,
+  cartId,
+  lineItems,
+  fetchImpl,
+}) {
   const callOpts = {
-    endpoint,
-    name: 'get_cart',
-    args: {cart_id: cartId},
+    storeDomain,
+    password,
+    profileUrl,
+    name: 'update_cart',
+    args: {
+      id: cartId,
+      cart: {
+        line_items: lineItems.map(({variantId, quantity}) => ({
+          item: {id: variantId},
+          quantity,
+        })),
+      },
+    },
   };
   if (fetchImpl) callOpts.fetchImpl = fetchImpl;
 
   const payload = await callTool(callOpts);
   return {
     cart: payload.cart ?? null,
-    errors: payload.errors ?? [],
+    messages: payload.messages ?? [],
+  };
+}
+
+/**
+ * Converts a cart into a checkout to obtain a checkout URL — FALLBACK ONLY
+ * (§3.5): used when the cart response does not expose a usable
+ * `continue_url` directly.
+ *
+ * AL-UCP-7 resolution (PROBED live, corrects the Dev MCP docs' prose): the
+ * *captured tool schema* (`ucp-tools-list.json`) requires `checkout` with
+ * `checkout.line_items` REGARDLESS of whether `cart_id` is supplied — the
+ * live server enforces that schema literally ("Invalid arguments: object at
+ * `/checkout` is missing required properties: line_items" when `checkout`
+ * was omitted or empty, even with a top-level `cart_id` present). The docs'
+ * claim that "checkout itself becomes optional" when `cart_id` is provided
+ * did NOT hold against this store's live schema validation. Given the
+ * primary handoff path is the cart's own `continue_url` (§3.5) and this
+ * fallback only fires when that's absent, Phase 1 always resends
+ * `checkout.line_items` rather than relying on `cart_id`-only conversion.
+ * `cart_id`, when present, is still sent (nested in `checkout`, matching the
+ * schema's only documented property path) as a hint for cart/checkout
+ * association, but line_items are the load-bearing field.
+ *
+ * @param {{
+ *   storeDomain: string,
+ *   password: string | undefined,
+ *   profileUrl: string,
+ *   cartId?: string,
+ *   lineItems: Array<{variantId: string, quantity: number}>,
+ *   fetchImpl?: typeof fetch,
+ * }} opts
+ * @returns {Promise<{checkout: object | null, messages: object[]}>}
+ */
+export async function createCheckout({
+  storeDomain,
+  password,
+  profileUrl,
+  cartId,
+  lineItems,
+  fetchImpl,
+}) {
+  const checkout = {
+    line_items: lineItems.map(({variantId, quantity}) => ({
+      item: {id: variantId},
+      quantity,
+    })),
+  };
+  if (cartId) checkout.cart_id = cartId;
+
+  const callOpts = {
+    storeDomain,
+    password,
+    profileUrl,
+    name: 'create_checkout',
+    args: {checkout},
+  };
+  if (fetchImpl) callOpts.fetchImpl = fetchImpl;
+
+  const payload = await callTool(callOpts);
+  // Success: checkout fields are FLAT at structuredContent (id, status,
+  // messages, continue_url, totals[], line_items[]) — unlike the cart tools,
+  // which nest under a .cart key. There is no .checkout wrapper to unwrap.
+  return {
+    checkout: payload ?? null,
+    messages: payload?.messages ?? [],
   };
 }

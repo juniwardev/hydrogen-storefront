@@ -29,6 +29,10 @@ declare global {
     PUBLIC_CUSTOMER_ACCOUNT_API_URL: string;
     PUBLIC_CHECKOUT_DOMAIN: string;
     SHOP_ID: string;
+    /** DEV-ONLY: storefront password for the UCP cookie shim (app/lib/ucp-auth.server.js). Absent in production. */
+    DEV_STOREFRONT_PASSWORD?: string;
+    /** UCP agent profile URL injected as meta.ucp-agent.profile on every /api/ucp/mcp call. */
+    PUBLIC_UCP_AGENT_PROFILE_URL: string;
   }
 }
 
