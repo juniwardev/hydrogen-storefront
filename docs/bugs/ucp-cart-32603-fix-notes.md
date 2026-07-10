@@ -2,6 +2,26 @@
 
 **Upstream ticket:** Shopify Support #68842755 (filed 2026-07-09)
 
+---
+
+## ✅ RESOLUTION (2026-07-10) — root cause is agentic-channel provisioning, NOT a Shopify code bug
+
+The `-32603` crash is **not** a Shopify-side defect awaiting a patch, and it is **not** the "validator/resolver contradiction" this document originally hypothesized. The real cause: `create_cart`/`create_checkout` require the store's **agentic commerce sales channel** to be provisioned, and on a development store that channel only becomes available once the store is **published AND storefront-password protection is removed**. With the channel unprovisioned, the resolver crashes with an unhandled `-32603` instead of returning a clean "channel unavailable" error.
+
+**Corroborating evidence (both public Shopify sources):**
+- **Community thread #34081** (`tools/call create_checkout and create_cart tool error`): byte-identical failure — same `-32603 "Core client error"`, same `gid://shopify/ProductVariant/<id>` shape, same password-protected dev store, both `create_cart` + `create_checkout`. The OP **resolved it** by publishing the store and removing password protection, and noted *"the agentic channel was not available in our store"* until then. A Shopify staffer could not reproduce it on a store where the channel was already available.
+- **Community thread #34499** (`Storefront ucp access for password-protected store`): Shopify staff (Donal-Shopify) stated verbatim — *"If the Online Store password is enabled, `/api/ucp/mcp` is protected by the same storefront password gate"* and *"There is no supported way to make that merchant scoped UCP MCP endpoint publicly accessible while keeping the storefront password enabled at the moment."* Recommendation: use a separate store with password protection disabled.
+
+**Why our shim still let `search_catalog` through:** the DEV-ONLY `_shopify_essential` cookie shim clears the password *read* gate (an unsupported workaround — exactly the thing #34499 says has no supported form). Reads succeed; cart/checkout additionally need the agentic channel, which the locked dev store never provisions — hence the crash. Both Shopify statements are fully consistent with our probe evidence once the shim is accounted for.
+
+**Consequence for `theme-evolution-os2-hydrogen`:** as a password-locked dev store, cart/checkout parity is **unreachable** here — by prerequisite, not by bug. `search_catalog` (via the shim) is the real ceiling. Unblocking cart requires a store with **password off + agentic channel provisioned**.
+
+**The one residual (non-blocking) product-quality issue** worth leaving on the ticket: an unprovisioned channel surfacing as an internal `-32603` crash rather than a clean error. Fresh reproductions with server-side `x-request-id`s were sent to Support #68842755 (see "Request-id capture for Shopify (2026-07-10)" section below) — as product feedback, not a fix request.
+
+Everything below this line is the original investigation record, preserved for audit. Its "validator/resolver contradiction / not client-fixable" conclusion is **correct that no client fix exists**, but its framing of the mechanism is superseded by the provisioning root cause above.
+
+---
+
 **Slug:** `ucp-cart-32603`
 **Date:** 2026-07-08
 **Coder:** Claude Sonnet 5
@@ -264,3 +284,115 @@ None — no code changed.
    shape that actually differs from what was probed here), re-run this same
    probe matrix as the acceptance test before considering Phase-1 cart parity
    complete.
+
+---
+
+## Request-id capture for Shopify (2026-07-10)
+
+**LIVE PROBE COMPLETED** — captured server-side request correlation headers
+from both `create_cart` and `create_checkout` crashing calls, probed against
+`https://theme-evolution-os2-hydrogen.myshopify.com/api/ucp/mcp` using the
+exact request-building code paths from `app/lib/mcp.server.js` and
+`app/lib/ucp-auth.server.js`. Both calls returned HTTP 500 / JSON-RPC -32603
+as expected.
+
+### create_cart
+
+| Field | Value |
+|---|---|
+| **UTC Timestamp** | `2026-07-10T19:03:21.221Z` |
+| **HTTP Status** | 500 |
+| **Primary Request-ID** | `425e0ddf-08a6-4846-8ebe-e226a2365c51-1783710201` (x-request-id header) |
+| **Cloudflare Ray** | `a191d3f5cf44dbba-LAX` (cf-ray header) |
+| **Data Center** | `gcp-us-west1` (x-dc header) |
+| **Error Code** | -32603 |
+| **Error Message** | Internal error |
+| **Error Data** | "Internal error calling tool create_cart: Core client error" |
+
+**Full response headers (set-cookie values redacted):**
+```
+access-control-allow-origin: *
+alt-svc: h3=":443"; ma=86400
+cache-control: no-cache, no-store
+cf-cache-status: DYNAMIC
+cf-ray: a191d3f5cf44dbba-LAX
+content-encoding: gzip
+content-security-policy: block-all-mixed-content; frame-ancestors 'none'; upgrade-insecure-requests;
+content-type: application/json; charset=utf-8
+date: Fri, 10 Jul 2026 19:03:21 GMT
+nel: {"report_to":"cf-nel","success_fraction":0.01,"max_age":604800}
+powered-by: Shopify
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[...]}
+server: cloudflare
+server-timing: processing;dur=205, db;dur=31, fetch;dur=94, asn;desc="7018", edge;desc="LAX", country;desc="US", servedBy;desc="2dmq", requestID;desc="425e0ddf-08a6-4846-8ebe-e226a2365c51-1783710201", _y;desc="ea8e8aed-947a-483d-8865-460fc800428d", _s;desc="b49c0dbe-6948-4b5d-ab69-940a5734a59c", _cmp;desc="3.AMPS_USCA_f_t_lvFWPieiT9y1lkk5aBURIQ", ipv6
+shopify-complexity-score: 1000
+shopify-complexity-score-v2: 1000
+vary: Accept,accept-encoding
+x-content-type-options: nosniff
+x-dc: gcp-us-west1,gcp-us-west1,gcp-us-west1
+x-download-options: noopen
+x-frame-options: DENY
+x-permitted-cross-domain-policies: none
+x-request-id: 425e0ddf-08a6-4846-8ebe-e226a2365c51-1783710201
+x-shopify-ucp-mcp-api-version: 2026-04-08
+x-xss-protection: 1; mode=block
+```
+
+### create_checkout
+
+| Field | Value |
+|---|---|
+| **UTC Timestamp** | `2026-07-10T19:03:21.524Z` |
+| **HTTP Status** | 500 |
+| **Primary Request-ID** | `5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201` (x-request-id header) |
+| **Cloudflare Ray** | `a191d3f7a81cdbba-LAX` (cf-ray header) |
+| **Data Center** | `gcp-us-west1` (x-dc header) |
+| **Error Code** | -32603 |
+| **Error Message** | Internal error |
+| **Error Data** | "Internal error calling tool create_checkout: Core client error" |
+
+**Full response headers (set-cookie values redacted):**
+```
+access-control-allow-origin: *
+alt-svc: h3=":443"; ma=86400
+cache-control: no-cache, no-store
+cf-cache-status: DYNAMIC
+cf-ray: a191d3f7a81cdbba-LAX
+content-encoding: gzip
+content-security-policy: block-all-mixed-content; frame-ancestors 'none'; upgrade-insecure-requests;
+content-type: application/json; charset=utf-8
+date: Fri, 10 Jul 2026 19:03:21 GMT
+nel: {"report_to":"cf-nel","success_fraction":0.01,"max_age":604800}
+powered-by: Shopify
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[...]}
+server: cloudflare
+server-timing: processing;dur=146, db;dur=34, fetch;dur=86, asn;desc="7018", edge;desc="LAX", country;desc="US", servedBy;desc="ms9s", requestID;desc="5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201", _y;desc="0e10bb33-d294-41cf-976c-83225578be26", _s;desc="81760c4d-86a5-4ac8-b989-813dd6a73135", _cmp;desc="3.AMPS_USCA_f_t_L8-EtNPvT9GEKp-0PfBqLg", ipv6
+shopify-complexity-score: 705
+shopify-complexity-score-v2: 705
+vary: Accept,accept-encoding
+x-content-type-options: nosniff
+x-dc: gcp-us-west1,gcp-us-west1,gcp-us-west1
+x-download-options: noopen
+x-frame-options: DENY
+x-permitted-cross-domain-policies: none
+x-request-id: 5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201
+x-shopify-ucp-mcp-api-version: 2026-04-08
+x-xss-protection: 1; mode=block
+```
+
+### Summary for support
+
+**Store:** `theme-evolution-os2-hydrogen.myshopify.com`
+**Endpoint:** `POST https://theme-evolution-os2-hydrogen.myshopify.com/api/ucp/mcp`
+**UCP API Version:** 2026-04-08 (per x-shopify-ucp-mcp-api-version response header)
+
+Both tools crash identically with -32603 when passed a real, valid ProductVariant GID
+in the line_items. The request-id headers below can be used to trace server-side logs:
+
+- **create_cart**: `x-request-id: 425e0ddf-08a6-4846-8ebe-e226a2365c51-1783710201` (captured at 2026-07-10T19:03:21.221Z)
+- **create_checkout**: `x-request-id: 5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201` (captured at 2026-07-10T19:03:21.524Z)
+
+Secondary correlation identifiers present:
+- Cloudflare Ray IDs: `a191d3f5cf44dbba-LAX` (create_cart), `a191d3f7a81cdbba-LAX` (create_checkout)
+- Data center: GCP US-West1 (gcp-us-west1)
+- Server-Timing headers contain additional diagnostic metadata (processing, db, fetch times)

@@ -200,3 +200,15 @@ No other defects found. No Anti-Stubbing violations. No hydration mismatches. No
 The migration is functionally complete and verified live for everything reachable on this dev store. The only remaining gap is the store-side `-32603`/HTTP-500 condition on `create_cart`/`create_checkout`, which is outside the application code's control, independently reproduced by two different investigators via two different HTTP clients, and handled correctly (gracefully) by the migrated code when it occurs. **Root-cause update (2026-07-09):** per the authoritative `docs/bugs/ucp-cart-32603-fix-notes.md`, this is specifically a store-side UCP-preview validator/resolver contradiction on ProductVariant GIDs with no client-side fix possible — Phase-1 cart/checkout parity for this store remains blocked upstream pending a Shopify-side resolution.
 
 PASS WITH NITS
+
+---
+
+## Root-cause reconciliation (2026-07-10) — supersedes the "validator/resolver contradiction, pending upstream fix" framing above
+
+The `-32603` cart/checkout root cause is now definitively identified and corroborated by two public Shopify community threads (see `docs/bugs/ucp-cart-32603-fix-notes.md` → "RESOLUTION (2026-07-10)"). It is **not** a Shopify code bug awaiting a patch and **not** a "validator/resolver contradiction":
+
+- **Cause:** `create_cart`/`create_checkout` require the store's **agentic commerce sales channel** to be provisioned. On a dev store that channel only becomes available once the store is **published AND storefront-password protection is removed**. Unprovisioned, the resolver crashes with an unhandled `-32603` instead of a clean error.
+- **Corroboration:** thread #34081 (byte-identical crash, OP fixed it via publish + password-off; *"the agentic channel was not available in our store"*) and thread #34499 (Shopify staff: *"no supported way to make that merchant scoped UCP MCP endpoint publicly accessible while keeping the storefront password enabled"*).
+- **Ticket #68842755:** Shopify's "expected on a password-protected store" answer was directionally correct; the specific mechanism (agentic-channel prerequisite) was confirmed via the forum threads. Fresh 2026-07-10 reproductions with server-side `x-request-id`s were sent as product-quality feedback on the crash-vs-clean-error behavior — not a fix request.
+
+**Effect on this report's verdict:** unchanged — **PASS WITH NITS** still holds. The migration code is correct; cart/checkout parity is blocked on `theme-evolution-os2-hydrogen` by a store **prerequisite** (password off + agentic channel provisioned), not by our code and not by a pending Shopify fix. Every other statement in this report stands; only the *characterization* of the cart/checkout blocker is refined here.

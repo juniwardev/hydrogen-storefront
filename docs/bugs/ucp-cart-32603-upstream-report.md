@@ -9,6 +9,17 @@
 
 ---
 
+## ✅ RESOLVED (2026-07-10) — provisioning prerequisite, not a code defect
+
+**Status: closed.** Root cause identified and corroborated by two public Shopify community threads: the `-32603` crash occurs because the store's **agentic commerce sales channel is not provisioned**, which on a development store requires the store to be **published and storefront-password protection removed**.
+
+- **Thread #34081** — byte-identical failure; OP resolved it by publishing + removing password, noting *"the agentic channel was not available in our store"* until then. Shopify staff could not reproduce on a channel-provisioned store.
+- **Thread #34499** — Shopify staff: *"There is no supported way to make that merchant scoped UCP MCP endpoint publicly accessible while keeping the storefront password enabled at the moment."*
+
+So there is **no client-side or Shopify-side fix pending** — cart/checkout on a password-locked dev store is blocked by prerequisite. The report below stands as the reproduction record. Its "open questions" are answered: (Q1) `gid://shopify/ProductVariant/<id>` *is* the right shape — it just can't resolve without the channel; (Q2) provisioning/state, not a code defect — but the unhandled `-32603` crash (vs. a clean "channel unavailable" error) remains worth flagging as product-quality feedback; (Q3) the required config is: published store + password off → agentic channel available. Fresh 2026-07-10 reproductions with server-side `x-request-id`s were provided to Support #68842755 for that error-handling feedback (see fix-notes).
+
+---
+
 ## Summary
 
 `create_cart` and `create_checkout` crash with **HTTP 500 / JSON-RPC `-32603 "Core client error"`** whenever the `line_items[].item.id` is a well-formed `gid://shopify/ProductVariant/<id>` — including real, live, in-stock variant IDs returned moments earlier by `search_catalog` on the same store.
