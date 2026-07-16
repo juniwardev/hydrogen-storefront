@@ -84,14 +84,14 @@ jobs:
       #     restore-keys: |
       #       turbo-${{ github.job }}-${{ github.ref_name }}-
 
-      - name: 📦 Build
+      # `npm run build` IS this project's type-validation gate: the Hydrogen
+      # build runs GraphQL codegen + tsc against the generated declarations.
+      # There is no separate `npm run typecheck` script (see CLAUDE.md) — the
+      # removed `npm run typecheck` step failed with "Missing script", and the
+      # `packages/cli/oclif.manifest.json` check was Hydrogen-monorepo cruft
+      # that does not apply to this single-app repo.
+      - name: 📦 Build (type-check gate)
         run: SHOPIFY_HYDROGEN_FLAG_LOCKFILE_CHECK=false npm run build
-
-      - name: ✅ Typecheck
-        run: npm run typecheck
-
-      - name: 🧑‍💻 CLI manifest check
-        run: 'test -z "$(git status --porcelain "packages/cli/oclif.manifest.json" )" || { echo -e "Run npm generate:manifest in packages/cli before pushing new commands or flags. Diff here:\n\n$(git diff)" ; exit 1; }'
 
   e2e:
     name: ⬣ Playwright tests
