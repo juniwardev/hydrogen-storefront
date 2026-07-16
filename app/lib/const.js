@@ -23,6 +23,37 @@ export const UCP_MCP_PATH = '/api/ucp/mcp';
 export const DEV_SHIM_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// UCP auth modes (docs/plans/ucp-no-auth-mode.md, §3/§6/AL-4). Single source
+// of truth for app/lib/mcp.server.js's callTool() switch and the
+// ($locale).api.assistant.jsx route's env read — avoids inline string
+// literals for a security-sensitive selector (zero-hardcoding directive).
+export const UCP_AUTH_MODES = {
+  NONE: 'none',
+  DEV_COOKIE: 'dev-cookie',
+  SIGNED: 'signed',
+};
+
+// Default when the operator leaves UCP_AUTH_MODE unset. MUST stay
+// DEV_COOKIE (not NONE): this reproduces today's behavior exactly, keeps the
+// existing dev-cookie unit suite green with zero edits, and never makes
+// "skip auth" reachable by omission (docs/plans/ucp-no-auth-mode.md §3).
+export const UCP_DEFAULT_AUTH_MODE = UCP_AUTH_MODES.DEV_COOKIE;
+
+// User-Agent sent on the UCP_AUTH_MODE='none' (cookieless) /api/ucp/mcp
+// POST. PRECAUTIONARY, not a proven requirement (AL-2/AL-7,
+// docs/plans/ucp-no-auth-mode.md §8): the /password shim legs are CONFIRMED
+// to need a UA (see DEV_SHIM_USER_AGENT above), but the existing dev-cookie
+// MCP POST (mcp.server.js) sends no UA and is probe-confirmed 200, so a
+// UA-less cookieless POST is not proven to 403. Kept as a cheap,
+// belt-and-suspenders hedge against workerd's no-UA-by-default fetch();
+// see the §10.4a probe result in docs/plans/ucp-no-auth-mode-impl-notes.md
+// for whether this has since been confirmed necessary. Intentionally a
+// separate constant from DEV_SHIM_USER_AGENT: that constant is documented
+// as DEV-ONLY / shim-specific, and the `none` path is explicitly not
+// dev-only or shim-mediated.
+export const UCP_CLIENT_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
 export const SOCIAL_LINKS = [
   {
     platform: 'instagram',

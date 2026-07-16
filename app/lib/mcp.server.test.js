@@ -24,7 +24,11 @@
 import {test, describe} from 'node:test';
 import assert from 'node:assert/strict';
 
-import {callTool, McpError} from './mcp.server.js';
+import {UCP_AUTH_MODES} from './const.js';
+import {
+  callTool,
+  McpError,
+} from './mcp.server.js';
 import {__resetForTests} from './ucp-auth.server.js';
 
 const FAKE_PASSWORD_PAGE = `
@@ -56,6 +60,25 @@ function withPasswordShim(handleMcpCall) {
         },
       });
     }
+    return handleMcpCall(url, init);
+  };
+}
+
+/**
+ * Builds a fetchImpl for `authMode:'none'` cases with NO `/password`
+ * handling at all — deliberately plain, unlike `withPasswordShim`. If the
+ * `none` path ever accidentally invokes the shim, any GET/POST to
+ * `/password` falls through to this fetchImpl's own request log rather than
+ * being silently served, making "the shim was never called" a structural
+ * assertion (§7b test 2) instead of an inference.
+ *
+ * @param {(url: string, init: object) => Promise<Response>} handleMcpCall
+ * @param {{calls: Array<{url: string, init: object}>}} [log] optional shared
+ *   array the caller can inspect after the fact
+ */
+function plainFetch(handleMcpCall, log) {
+  return async (url, init) => {
+    if (log) log.calls.push({url, init});
     return handleMcpCall(url, init);
   };
 }
@@ -401,6 +424,284 @@ describe('callTool — 302 password-gate retry', () => {
       (err) => {
         assert(err instanceof McpError);
         assert.equal(err.code, 'config_error');
+        return true;
+      },
+    );
+  });
+});
+
+/**
+ * §7b (docs/plans/ucp-no-auth-mode.md) — auth-mode coverage for the
+ * UCP_AUTH_MODE seam. `none` cases use `plainFetch` (no `/password`
+ * handling) so "the shim was never invoked" is a structural property, not an
+ * inference from a passing assertion elsewhere.
+ */
+describe('callTool — auth modes', () => {
+  test('1. authMode:none with password:undefined succeeds and returns structuredContent', async () => {
+    __resetForTests();
+    const successPayload = {products: [{id: 'gid://shopify/Product/1'}]};
+    const fetchImpl = plainFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {structuredContent: successPayload, isError: false},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+
+    const result = await callTool({
+      ...BASE_OPTS,
+      password: undefined,
+      authMode: UCP_AUTH_MODES.NONE,
+      fetchImpl,
+    });
+    assert.deepEqual(result, successPayload);
+  });
+
+  test('2. authMode:none never invokes the /password shim', async () => {
+    __resetForTests();
+    const log = {calls: []};
+    const fetchImpl = plainFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {structuredContent: {products: []}, isError: false},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+      log,
+    );
+
+    await callTool({
+      ...BASE_OPTS,
+      password: undefined,
+      authMode: UCP_AUTH_MODES.NONE,
+      fetchImpl,
+    });
+
+    assert.equal(log.calls.length, 1, 'exactly one request: the MCP call');
+    assert(
+      !log.calls.some(({url}) => String(url).includes('/password')),
+      'no GET/POST /password request — the shim must never be invoked on none',
+    );
+  });
+
+  test('3. authMode:none sends no Cookie header and a non-empty User-Agent', async () => {
+    __resetForTests();
+    let capturedHeaders;
+    const fetchImpl = plainFetch(async (url, init) => {
+      capturedHeaders = init.headers;
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {structuredContent: {products: []}, isError: false},
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    });
+
+    await callTool({
+      ...BASE_OPTS,
+      password: undefined,
+      authMode: UCP_AUTH_MODES.NONE,
+      fetchImpl,
+    });
+
+    assert.equal(
+      'Cookie' in capturedHeaders,
+      false,
+      'no Cookie header key at all — never Cookie: undefined',
+    );
+    assert(
+      typeof capturedHeaders['User-Agent'] === 'string' &&
+        capturedHeaders['User-Agent'].length > 0,
+      'a non-empty User-Agent header is present (AL-2 precautionary guard)',
+    );
+  });
+
+  test('4. authMode:none against a gated store (302) throws config_error auth_mode_none_but_store_gated with no remint retry', async () => {
+    __resetForTests();
+    let callCount = 0;
+    const fetchImpl = plainFetch(async () => {
+      callCount += 1;
+      return new Response(null, {status: 302, headers: {Location: '/'}});
+    });
+
+    await assert.rejects(
+      () =>
+        callTool({
+          ...BASE_OPTS,
+          password: undefined,
+          authMode: UCP_AUTH_MODES.NONE,
+          fetchImpl,
+        }),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
+        assert.equal(err.detail.reason, 'auth_mode_none_but_store_gated');
+        return true;
+      },
+    );
+    assert.equal(
+      callCount,
+      1,
+      'the tool endpoint is called exactly once — no remint retry on none',
+    );
+  });
+
+  test('5. authMode:none still injects meta.ucp-agent.profile into the request body', async () => {
+    __resetForTests();
+    let capturedBody;
+    const fetchImpl = plainFetch(async (url, init) => {
+      capturedBody = JSON.parse(init.body);
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          result: {structuredContent: {products: []}, isError: false},
+        }),
+        {status: 200, headers: {'Content-Type': 'application/json'}},
+      );
+    });
+
+    await callTool({
+      ...BASE_OPTS,
+      password: undefined,
+      authMode: UCP_AUTH_MODES.NONE,
+      fetchImpl,
+    });
+
+    assert.equal(
+      capturedBody.params.arguments.meta['ucp-agent'].profile,
+      BASE_OPTS.profileUrl,
+    );
+  });
+
+  test('6. authMode:none still maps HTTP 429 to rate_limited with retryAfterMs (shared envelope logic not bypassed)', async () => {
+    __resetForTests();
+    const fetchImpl = plainFetch(
+      async () =>
+        new Response(null, {
+          status: 429,
+          headers: new Headers({'Retry-After': '3'}),
+        }),
+    );
+
+    await assert.rejects(
+      () =>
+        callTool({
+          ...BASE_OPTS,
+          password: undefined,
+          authMode: UCP_AUTH_MODES.NONE,
+          fetchImpl,
+        }),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'rate_limited');
+        assert.equal(err.detail.retryAfterMs, 3000);
+        return true;
+      },
+    );
+  });
+
+  test('7. authMode:signed throws config_error signed_mode_not_implemented with no network call', async () => {
+    __resetForTests();
+    const log = {calls: []};
+    const fetchImpl = plainFetch(async () => {
+      throw new Error('network call must not happen for signed mode');
+    }, log);
+
+    await assert.rejects(
+      () =>
+        callTool({
+          ...BASE_OPTS,
+          password: undefined,
+          authMode: UCP_AUTH_MODES.SIGNED,
+          fetchImpl,
+        }),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
+        assert.equal(err.detail.reason, 'signed_mode_not_implemented');
+        return true;
+      },
+    );
+    assert.equal(log.calls.length, 0, 'no network call for the signed stub');
+  });
+
+  test('8. an unrecognized authMode throws config_error unknown_auth_mode with no network call', async () => {
+    __resetForTests();
+    const log = {calls: []};
+    const fetchImpl = plainFetch(async () => {
+      throw new Error('network call must not happen for an unknown mode');
+    }, log);
+
+    await assert.rejects(
+      () =>
+        callTool({
+          ...BASE_OPTS,
+          password: undefined,
+          authMode: 'unknown',
+          fetchImpl,
+        }),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
+        assert.equal(err.detail.reason, 'unknown_auth_mode');
+        return true;
+      },
+    );
+    assert.equal(log.calls.length, 0, 'no network call for an unknown mode');
+  });
+
+  test('9. authMode:dev-cookie explicit (password present) behaves identically to the omitted-default case', async () => {
+    __resetForTests();
+    const successPayload = {products: []};
+    const fetchImpl = withPasswordShim(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {structuredContent: successPayload, isError: false},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+
+    const result = await callTool({
+      ...BASE_OPTS,
+      authMode: UCP_AUTH_MODES.DEV_COOKIE,
+      fetchImpl,
+    });
+    assert.deepEqual(result, successPayload);
+  });
+
+  test('10. authMode:dev-cookie with password:undefined still throws dev_storefront_password_missing, with a hint mentioning UCP_AUTH_MODE=none', async () => {
+    await assert.rejects(
+      () =>
+        callTool({
+          ...BASE_OPTS,
+          password: undefined,
+          authMode: UCP_AUTH_MODES.DEV_COOKIE,
+          fetchImpl: withPasswordShim(
+            async () => new Response(null, {status: 200}),
+          ),
+        }),
+      (err) => {
+        assert(err instanceof McpError);
+        assert.equal(err.code, 'config_error');
+        assert.equal(err.detail.reason, 'dev_storefront_password_missing');
+        assert(
+          err.detail.hint.includes('UCP_AUTH_MODE=none'),
+          'the hint must lead with the UCP_AUTH_MODE=none remedy (Revision 2 Change 2)',
+        );
         return true;
       },
     );

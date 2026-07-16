@@ -1,6 +1,6 @@
 import {json} from '@shopify/remix-oxygen';
 
-import {ASSISTANT_RESULT_LIMIT} from '~/lib/const';
+import {ASSISTANT_RESULT_LIMIT, UCP_DEFAULT_AUTH_MODE} from '~/lib/const';
 import {
   McpError,
   createCart,
@@ -59,9 +59,15 @@ export async function action({request, params, context}) {
   // elsewhere. DEV_STOREFRONT_PASSWORD is DEV-ONLY and may be legitimately
   // absent in production (§3.4) — its absence is handled inside
   // mcp.server.js's callTool() as a loud config_error, not here.
+  // UCP_AUTH_MODE (docs/plans/ucp-no-auth-mode.md) declares the credential
+  // strategy: 'none' (public storefront), 'dev-cookie' (password-gated dev
+  // store, the default), or 'signed' (Phase-2 seam, not implemented).
+  // Validated inside callTool(), not here (AL-6) — an unrecognized value
+  // throws a loud config_error at request time.
   const storeDomain = context.env.PUBLIC_STORE_DOMAIN;
   const profileUrl = context.env.PUBLIC_UCP_AGENT_PROFILE_URL;
   const password = context.env.DEV_STOREFRONT_PASSWORD;
+  const authMode = context.env.UCP_AUTH_MODE || UCP_DEFAULT_AUTH_MODE;
 
   if (!storeDomain || !profileUrl) {
     return json(
@@ -86,7 +92,7 @@ export async function action({request, params, context}) {
   // Treat empty string as "no cartId" — only pass a truthy cartId to MCP.
   const cartId = String(formData.get('cartId') ?? '') || null;
 
-  const mcpBase = {storeDomain, password, profileUrl};
+  const mcpBase = {storeDomain, password, profileUrl, authMode};
 
   try {
     switch (intent) {

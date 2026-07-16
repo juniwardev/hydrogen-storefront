@@ -22,7 +22,13 @@
  * only coarse error category + status code on error paths to avoid PII leakage.
  */
 
-import {MCP_TIMEOUT_MS, UCP_MCP_PATH} from './const.js';
+import {
+  MCP_TIMEOUT_MS,
+  UCP_AUTH_MODES,
+  UCP_CLIENT_USER_AGENT,
+  UCP_DEFAULT_AUTH_MODE,
+  UCP_MCP_PATH,
+} from './const.js';
 import {McpError} from './mcp-error.server.js';
 import {
   ensureStorefrontDigest,
@@ -81,6 +87,7 @@ function buildMeta(profileUrl) {
  *   profileUrl: string,
  *   name: string,
  *   args: object,
+ *   authMode?: 'none' | 'dev-cookie' | 'signed',
  *   timeoutMs?: number,
  *   fetchImpl?: typeof fetch,
  *   _isRetry?: boolean,
@@ -94,39 +101,73 @@ export async function callTool({
   profileUrl,
   name,
   args,
+  authMode = UCP_DEFAULT_AUTH_MODE,
   timeoutMs = MCP_TIMEOUT_MS,
   fetchImpl = fetch,
   _isRetry = false,
 }) {
   const endpoint = mcpEndpoint({storeDomain});
 
-  // DEV-ONLY shim gate (§3.4): the shim runs only when the password env var
-  // is present. If it is absent, there is no signer configured in Phase 1
-  // (Signed/Token tiers are Phase 2 — §4.4), so raise a loud config error
-  // instead of attempting an unauthenticated call that will 302-loop.
-  if (!password) {
-    throw new McpError('config_error', {
-      reason: 'dev_storefront_password_missing',
-      hint: 'Set DEV_STOREFRONT_PASSWORD in .env.local (dev-only) or configure a Signed-tier request signer (Phase 2, §4.4).',
-    });
-  }
+  // Auth-mode switch (docs/plans/ucp-no-auth-mode.md §4): selects the
+  // credential strategy BEFORE the shared envelope/rate-limit/timeout logic
+  // below, which is identical for every mode. `cookie` stays undefined for
+  // `none` — the headers builder below omits the Cookie header entirely
+  // rather than sending `Cookie: undefined`.
+  let cookie;
+  if (authMode === UCP_AUTH_MODES.DEV_COOKIE) {
+    // DEV-ONLY shim gate (§3.4): the shim runs only when the password env
+    // var is present. If it is absent, there is no signer configured in
+    // Phase 1 (Signed/Token tiers are Phase 2 — §4.4), so raise a loud
+    // config error instead of attempting an unauthenticated call that will
+    // 302-loop.
+    if (!password) {
+      const reason = 'dev_storefront_password_missing';
+      console.error(`[mcp] config_error reason=${reason} tool=${name}`); // eslint-disable-line no-console
+      throw new McpError('config_error', {
+        reason,
+        hint: 'Set UCP_AUTH_MODE=none for a public (password-disabled) storefront; or set DEV_STOREFRONT_PASSWORD in .env.local for a password-gated dev store; or configure a Signed-tier request signer (Phase 2, §4.4).',
+      });
+    }
 
-  const cookie = await ensureStorefrontDigest({
-    storeDomain,
-    password,
-    fetchImpl,
-  });
+    cookie = await ensureStorefrontDigest({
+      storeDomain,
+      password,
+      fetchImpl,
+    });
+  } else if (authMode === UCP_AUTH_MODES.NONE) {
+    // No shim, no Cookie header. `ucp-auth.server.js` is never touched on
+    // this path (G2 by construction, §4).
+  } else if (authMode === UCP_AUTH_MODES.SIGNED) {
+    const reason = 'signed_mode_not_implemented';
+    console.error(`[mcp] config_error reason=${reason} tool=${name}`); // eslint-disable-line no-console
+    throw new McpError('config_error', {reason});
+  } else {
+    // `mode` is operator-set env, never a secret or user input, so it is
+    // safe to include in `detail` for debugging a typo (§4.1). It is
+    // intentionally left out of the console line to keep that line within
+    // the project's line-length convention; `detail.mode` carries it instead.
+    const reason = 'unknown_auth_mode';
+    console.error(`[mcp] config_error reason=${reason} tool=${name}`); // eslint-disable-line no-console
+    throw new McpError('config_error', {reason, mode: authMode});
+  }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
+    const headers = {'Content-Type': 'application/json'};
+    if (authMode === UCP_AUTH_MODES.DEV_COOKIE) {
+      headers.Cookie = cookie;
+    } else if (authMode === UCP_AUTH_MODES.NONE) {
+      // Precautionary belt-and-suspenders (AL-2/AL-7) — see
+      // UCP_CLIENT_USER_AGENT's JSDoc in const.js for why this is not a
+      // proven requirement for the cookieless MCP POST.
+      headers['User-Agent'] = UCP_CLIENT_USER_AGENT;
+    }
+
     const res = await fetchImpl(endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: cookie,
-      },
+      headers,
       signal: ctrl.signal,
       body: JSON.stringify({
         jsonrpc: '2.0',
@@ -139,15 +180,24 @@ export async function callTool({
       }),
     });
 
-    // A 302 means the cookie was rejected/expired (password gate re-engaged).
-    // Invalidate and retry ONCE with a freshly minted cookie (bounded retry,
-    // AL-UCP-9). A second 302 after a fresh mint is a genuine config/auth
-    // failure, not a loop candidate.
+    // A 302 means the auth was rejected. Handling is mode-specific:
+    // - dev-cookie: the cookie was rejected/expired (password gate
+    //   re-engaged). Invalidate and retry ONCE with a freshly minted cookie
+    //   (bounded retry, AL-UCP-9). A second 302 after a fresh mint is a
+    //   genuine config/auth failure, not a loop candidate.
+    // - none: the storefront is gated despite a `none` declaration. There is
+    //   nothing to remint, so this is a config_error on the first 302 — no
+    //   retry (docs/plans/ucp-no-auth-mode.md §4).
     if (res.status === 302 || res.status === 301) {
+      if (authMode === UCP_AUTH_MODES.NONE) {
+        const reason = 'auth_mode_none_but_store_gated';
+        console.error(`[mcp] config_error reason=${reason} tool=${name}`); // eslint-disable-line no-console
+        throw new McpError('config_error', {reason});
+      }
       if (_isRetry) {
-        throw new McpError('config_error', {
-          reason: 'password_gate_persists_after_remint',
-        });
+        const reason = 'password_gate_persists_after_remint';
+        console.error(`[mcp] config_error reason=${reason} tool=${name}`); // eslint-disable-line no-console
+        throw new McpError('config_error', {reason});
       }
       invalidateStorefrontDigest();
       return callTool({
@@ -156,6 +206,7 @@ export async function callTool({
         profileUrl,
         name,
         args,
+        authMode,
         timeoutMs,
         fetchImpl,
         _isRetry: true,
@@ -240,6 +291,7 @@ export async function callTool({
  *   query: string,
  *   context?: {address_country: string, language?: string, currency?: string},
  *   limit?: number,
+ *   authMode?: 'none' | 'dev-cookie' | 'signed',
  *   fetchImpl?: typeof fetch,
  * }} opts
  * @returns {Promise<{products: object[], pagination?: object}>}
@@ -251,12 +303,14 @@ export async function searchCatalog({
   query,
   context,
   limit = 8,
+  authMode,
   fetchImpl,
 }) {
   const callOpts = {
     storeDomain,
     password,
     profileUrl,
+    authMode,
     name: 'search_catalog',
     args: {
       catalog: {
@@ -293,6 +347,7 @@ export async function searchCatalog({
  *   password: string | undefined,
  *   profileUrl: string,
  *   lineItems: Array<{variantId: string, quantity: number}>,
+ *   authMode?: 'none' | 'dev-cookie' | 'signed',
  *   fetchImpl?: typeof fetch,
  * }} opts
  * @returns {Promise<{cart: object | null, messages: object[]}>}
@@ -302,12 +357,14 @@ export async function createCart({
   password,
   profileUrl,
   lineItems,
+  authMode,
   fetchImpl,
 }) {
   const callOpts = {
     storeDomain,
     password,
     profileUrl,
+    authMode,
     name: 'create_cart',
     args: {
       cart: {
@@ -347,6 +404,7 @@ export async function createCart({
  *   profileUrl: string,
  *   cartId: string,
  *   lineItems: Array<{variantId: string, quantity: number}>,
+ *   authMode?: 'none' | 'dev-cookie' | 'signed',
  *   fetchImpl?: typeof fetch,
  * }} opts
  * @returns {Promise<{cart: object | null, messages: object[]}>}
@@ -357,12 +415,14 @@ export async function updateCart({
   profileUrl,
   cartId,
   lineItems,
+  authMode,
   fetchImpl,
 }) {
   const callOpts = {
     storeDomain,
     password,
     profileUrl,
+    authMode,
     name: 'update_cart',
     args: {
       id: cartId,
@@ -409,6 +469,7 @@ export async function updateCart({
  *   profileUrl: string,
  *   cartId?: string,
  *   lineItems: Array<{variantId: string, quantity: number}>,
+ *   authMode?: 'none' | 'dev-cookie' | 'signed',
  *   fetchImpl?: typeof fetch,
  * }} opts
  * @returns {Promise<{checkout: object | null, messages: object[]}>}
@@ -419,6 +480,7 @@ export async function createCheckout({
   profileUrl,
   cartId,
   lineItems,
+  authMode,
   fetchImpl,
 }) {
   const checkout = {
@@ -433,6 +495,7 @@ export async function createCheckout({
     storeDomain,
     password,
     profileUrl,
+    authMode,
     name: 'create_checkout',
     args: {checkout},
   };
