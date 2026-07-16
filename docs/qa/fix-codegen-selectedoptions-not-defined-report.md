@@ -48,11 +48,13 @@ Both fixes (Round 1: `$selectedOptions` declaration added; Round 2: duplicate `P
 **PASS — both target warnings are ABSENT.**
 
 Dev server startup log (captured in full) contains only:
+
 - Vite CJS API deprecation notice (unrelated, pre-existing)
 - React Router v7 single-fetch future flag notice (unrelated, pre-existing)
 - Private storefront token recommendation (unrelated, pre-existing)
 
 **Absent:**
+
 - `Variable "$selectedOptions" is not defined by operation "Product"` — ABSENT
 - `Fragment name "ProductVariant" must be unique` — ABSENT
 
@@ -82,16 +84,17 @@ MCP: Playwright (Chromium)
 
 Multiple product pages tested:
 
-| URL | HTTP Status | Title | Has Image | Has Price | Is 404 |
-|-----|-------------|-------|-----------|-----------|--------|
-| `/products/the-compare-at-price-snowboard` | 200 | The Compare at Price Snowboard | Yes (CDN img) | Yes | No |
-| `/products/the-complete-snowboard` | 200 | The Complete Snowboard | Yes (11 images) | Yes | No |
-| `/products/the-complete-snowboard?Color=Dawn` | 200 | The Complete Snowboard | Yes | Yes | No |
-| `/products/the-complete-snowboard?variant=50239737331932` | 200 | The Complete Snowboard | Yes | Yes | No |
+| URL                                                       | HTTP Status | Title                          | Has Image       | Has Price | Is 404 |
+| --------------------------------------------------------- | ----------- | ------------------------------ | --------------- | --------- | ------ |
+| `/products/the-compare-at-price-snowboard`                | 200         | The Compare at Price Snowboard | Yes (CDN img)   | Yes       | No     |
+| `/products/the-complete-snowboard`                        | 200         | The Complete Snowboard         | Yes (11 images) | Yes       | No     |
+| `/products/the-complete-snowboard?Color=Dawn`             | 200         | The Complete Snowboard         | Yes             | Yes       | No     |
+| `/products/the-complete-snowboard?variant=50239737331932` | 200         | The Complete Snowboard         | Yes             | Yes       | No     |
 
 No product pages returned 404. No `Fragment name "ProductVariant" must be unique` error appeared in any dev server log entry for these requests.
 
 Screenshots:
+
 - `/tmp/qa-r2-homepage.png` — homepage renders correctly
 - `/tmp/qa-r2-product.png` — product page renders with title and images
 - `/tmp/qa-r2-complete-snowboard.png` — The Complete Snowboard with Color variant selector visible
@@ -161,6 +164,7 @@ The only codegen-section warnings in the dev server log are framework-level depr
 **Homepage:** No errors or warnings.
 
 **Product pages:**
+
 - `preserveControl` prop warning — pre-existing, originates in `Link.jsx`/`ProductForm`, not introduced by this fix
 - CORS errors from `monorail-edge.shopifysvc.com/v1/produce` — expected in local dev environment (Shopify analytics endpoint unreachable from localhost)
 - No hydration warnings
@@ -219,14 +223,14 @@ This is a pre-existing bug in `ProductForm`'s variant link construction, not int
 
 Per the plan's Definition of Done (Section 9):
 
-| # | Criterion | Status |
-|---|-----------|--------|
-| 1 | `npm run lint` passes | Pre-existing errors present (73); no new errors from this fix. Matches impl notes. |
-| 2 | `npm run build` passes with no `$selectedOptions`-related codegen error | **PASS** — confirmed by impl notes; dev server codegen also clean |
-| 3 | `npm run dev` starts cleanly with no codegen warning | **PASS** — dev server log confirms both warnings absent |
-| 4 | Product page renders correctly, variant selection works | **PASS** — HTTP 200, full content, `?Color=Dawn` resolves different variant GID |
-| 5 | `<Analytics.ProductView>` receives a non-empty `variantId` | **PASS** — component present, `selectedVariant.id` non-null (GID in HTML), loader completes |
-| 6 | Only `app/routes/($locale).products.$productHandle.jsx` hand-edited; codegen file accepted | **PASS** — confirmed by impl notes |
+| #   | Criterion                                                                                  | Status                                                                                      |
+| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| 1   | `npm run lint` passes                                                                      | Pre-existing errors present (73); no new errors from this fix. Matches impl notes.          |
+| 2   | `npm run build` passes with no `$selectedOptions`-related codegen error                    | **PASS** — confirmed by impl notes; dev server codegen also clean                           |
+| 3   | `npm run dev` starts cleanly with no codegen warning                                       | **PASS** — dev server log confirms both warnings absent                                     |
+| 4   | Product page renders correctly, variant selection works                                    | **PASS** — HTTP 200, full content, `?Color=Dawn` resolves different variant GID             |
+| 5   | `<Analytics.ProductView>` receives a non-empty `variantId`                                 | **PASS** — component present, `selectedVariant.id` non-null (GID in HTML), loader completes |
+| 6   | Only `app/routes/($locale).products.$productHandle.jsx` hand-edited; codegen file accepted | **PASS** — confirmed by impl notes                                                          |
 
 All six criteria are satisfied.
 

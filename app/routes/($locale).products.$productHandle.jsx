@@ -5,25 +5,21 @@ import {useLoaderData, Await} from '@remix-run/react';
 import {
   getSeoMeta,
   Image,
-  Money,
   ShopPayButton,
   getSelectedProductOptions,
   Analytics,
-  useOptimisticVariant,
-  getAdjacentAndFirstAvailableVariants,
-  useSelectedOptionInUrlParam,
   getProductOptions,
 } from '@shopify/hydrogen';
 import invariant from 'tiny-invariant';
 import clsx from 'clsx';
+
 import {Heading, Section, Text} from '~/components/Text';
 import {Link} from '~/components/Link';
-import {Button} from '~/components/Button';
 import {AddToCartButton} from '~/components/AddToCartButton';
 import {Skeleton} from '~/components/Skeleton';
 import {ProductSwimlane} from '~/components/ProductSwimlane';
 import {ProductGallery} from '~/components/ProductGallery';
-import {IconCaret, IconCheck, IconClose} from '~/components/Icon';
+import {IconCaret, IconClose} from '~/components/Icon';
 import {getExcerpt} from '~/lib/utils';
 import {seoPayload} from '~/lib/seo.server';
 import {routeHeaders} from '~/data/cache';
@@ -117,8 +113,9 @@ export const meta = ({matches}) => {
 
 export default function Product() {
   /** @type {LoaderReturnData} */
-  const {product, shop, recommended, storeDomain, selectedVariant} = useLoaderData();
-  const {media, title, vendor, descriptionHtml, options} = product;
+  const {product, shop, recommended, storeDomain, selectedVariant} =
+    useLoaderData();
+  const {media, title, vendor, descriptionHtml} = product;
   const {shippingPolicy, refundPolicy} = shop;
 
   // Get the product options array
@@ -217,11 +214,6 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
 
   const isOutOfStock = !selectedVariant?.availableForSale;
 
-  const isOnSale =
-    selectedVariant?.price?.amount &&
-    selectedVariant?.compareAtPrice?.amount &&
-    selectedVariant?.price?.amount < selectedVariant?.compareAtPrice?.amount;
-
   return (
     <div className="grid gap-10">
       <div className="grid gap-4">
@@ -252,7 +244,10 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                             )}
                           >
                             <span>
-                              {selectedVariant?.selectedOptions[optionIndex].value}
+                              {
+                                selectedVariant?.selectedOptions[optionIndex]
+                                  .value
+                              }
                             </span>
                             <IconCaret direction={open ? 'up' : 'down'} />
                           </Listbox.Button>
@@ -276,10 +271,13 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                                       prefetch="intent"
                                       className={clsx(
                                         'text-left w-full py-2 px-4 transition-colors',
-                                        active ? 'bg-primary text-contrast' : 'text-primary',
+                                        active
+                                          ? 'bg-primary text-contrast'
+                                          : 'text-primary',
                                       )}
                                       onClick={() => {
-                                        if (closeRef.current) closeRef.current.click();
+                                        if (closeRef.current)
+                                          closeRef.current.click();
                                       }}
                                     >
                                       {value.name}
@@ -293,21 +291,25 @@ export function ProductForm({productOptions, selectedVariant, storeDomain}) {
                     </Listbox>
                   </div>
                 ) : (
-                  option.optionValues.map(({name, variantUriQuery, selected, swatch}) => (
-                    <Link
-                      key={name}
-                      to={{search: variantUriQuery}}
-                      preserveControl
-                      prefetch="intent"
-                      preventScrollReset
-                      className={clsx(
-                        'leading-none py-1 border-b-[1.5px] cursor-pointer transition-all duration-200',
-                        selected ? 'border-primary/50' : 'border-transparent opacity-50',
-                      )}
-                    >
-                      <ProductOptionSwatch swatch={swatch} name={name} />
-                    </Link>
-                  ))
+                  option.optionValues.map(
+                    ({name, variantUriQuery, selected, swatch}) => (
+                      <Link
+                        key={name}
+                        to={{search: variantUriQuery}}
+                        preserveControl
+                        prefetch="intent"
+                        preventScrollReset
+                        className={clsx(
+                          'leading-none py-1 border-b-[1.5px] cursor-pointer transition-all duration-200',
+                          selected
+                            ? 'border-primary/50'
+                            : 'border-transparent opacity-50',
+                        )}
+                      >
+                        <ProductOptionSwatch swatch={swatch} name={name} />
+                      </Link>
+                    ),
+                  )
                 )
               ) : null}
             </div>

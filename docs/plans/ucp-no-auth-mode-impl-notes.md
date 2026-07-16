@@ -34,12 +34,12 @@ npm run dev
 
 Operator env vars (documented here per AL-3/N3 — not written to any env file by the Coder):
 
-| Store type | `UCP_AUTH_MODE` | `DEV_STOREFRONT_PASSWORD` |
-| :--- | :--- | :--- |
-| Public, password-disabled (e.g. `ashford-quantum`) | `none` | not needed |
-| Password-gated dev store | `dev-cookie` (or leave unset — this is the default) | required |
-| Unset entirely | defaults to `dev-cookie` | required if the store is gated; loud `config_error` (`dev_storefront_password_missing`) if not set |
-| Phase-2 signed tier | `signed` | n/a — throws `signed_mode_not_implemented` (no implementation exists yet) |
+| Store type                                         | `UCP_AUTH_MODE`                                     | `DEV_STOREFRONT_PASSWORD`                                                                          |
+| :------------------------------------------------- | :-------------------------------------------------- | :------------------------------------------------------------------------------------------------- |
+| Public, password-disabled (e.g. `ashford-quantum`) | `none`                                              | not needed                                                                                         |
+| Password-gated dev store                           | `dev-cookie` (or leave unset — this is the default) | required                                                                                           |
+| Unset entirely                                     | defaults to `dev-cookie`                            | required if the store is gated; loud `config_error` (`dev_storefront_password_missing`) if not set |
+| Phase-2 signed tier                                | `signed`                                            | n/a — throws `signed_mode_not_implemented` (no implementation exists yet)                          |
 
 `CLAUDE.md`'s required-env-vars table does not yet have a `UCP_AUTH_MODE` row (AL-3/N3, deferred to operator/reviewer per the plan — the Coder does not edit that file). Recording it here so a future agent grounding on `CLAUDE.md` alone still learns the var exists.
 

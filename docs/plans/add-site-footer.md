@@ -72,7 +72,11 @@ flowchart TD
 The footer's DOM layout is specified up front so the Coder has no structural ambiguity:
 
 ```jsx
-<Section as="footer" display="flex" className="bg-primary dark:bg-contrast text-contrast dark:text-primary flex-col">
+<Section
+  as="footer"
+  display="flex"
+  className="bg-primary dark:bg-contrast text-contrast dark:text-primary flex-col"
+>
   {/* Row 1: three equal columns. The grid contains exactly these three children. */}
   <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
     <FooterNavColumn menu={menu} />
@@ -119,6 +123,7 @@ Alternatives that are explicitly rejected:
 1. **Form mechanics.** The form is a `<fetcher.Form method="post" action={newsletterActionPath}>` where `newsletterActionPath` is derived from `useRouteLoaderData('root')?.selectedLocale?.pathPrefix` (see "Locale-prefix derivation" below). This is the canonical pathPrefix source — the same one `app/components/Link.jsx` uses — so we do not introduce a second derivation.
 
 2. **Action validation.** The route's `action` performs, in order:
+
    - Validate `params.locale` matches the storefront's i18n config (404 on mismatch). This mirrors `app/routes/($locale)._index.jsx` lines 36–43.
    - Read the honeypot field `_gotcha`. If non-empty, return a fake success response without further processing (defangs the obvious bot vector).
    - Read `email` from `formData`. If missing or fails a basic regex, return `json({ok: false, message: '...'}, {status: 400})`.
@@ -271,8 +276,8 @@ Add a named export:
 export const SOCIAL_LINKS = [
   {platform: 'instagram', href: '', label: 'Instagram'},
   {platform: 'twitter-x', href: '', label: 'Twitter / X'},
-  {platform: 'facebook',  href: '', label: 'Facebook'},
-  {platform: 'tiktok',    href: '', label: 'TikTok'},
+  {platform: 'facebook', href: '', label: 'Facebook'},
+  {platform: 'tiktok', href: '', label: 'TikTok'},
   // TODO: operator must populate `href` values before this feature is considered done.
 ];
 ```
@@ -389,14 +394,17 @@ Required structure (see Section 3 "DOM structure (concrete)" for the row layout)
     // NOTE: optional chaining is mandatory on every dereference of rootData.
     // See Section 3 "Coding notes" — the root loader may be undefined on the
     // first transitional render.
-    const pathPrefix = useRouteLoaderData('root')?.selectedLocale?.pathPrefix ?? '';
+    const pathPrefix =
+      useRouteLoaderData('root')?.selectedLocale?.pathPrefix ?? '';
     const action = `${pathPrefix}/api/newsletter`;
     const isHydrated = useIsHydrated();
     const submitting = fetcher.state !== 'idle';
 
     return (
       <div>
-        <Heading as="h3" size="lead">Newsletter</Heading>
+        <Heading as="h3" size="lead">
+          Newsletter
+        </Heading>
         <Text>Subscribe for updates.</Text>
         <fetcher.Form method="post" action={action}>
           {/*
@@ -411,7 +419,12 @@ Required structure (see Section 3 "DOM structure (concrete)" for the row layout)
             tabIndex={-1}
             autoComplete="off"
             aria-hidden="true"
-            style={{position: 'absolute', left: '-9999px', width: '1px', height: '1px'}}
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              width: '1px',
+              height: '1px',
+            }}
           />
           <input
             type="email"
@@ -441,6 +454,7 @@ Required structure (see Section 3 "DOM structure (concrete)" for the row layout)
   The manual derivation `` `${pathPrefix}/api/newsletter` `` is the complete, final URL. Use it directly as `action="..."` on `<fetcher.Form>` and nowhere else.
 
   Key requirements:
+
   - Action URL is derived from `useRouteLoaderData('root')?.selectedLocale?.pathPrefix`. Do NOT use `useParams()`. Use optional chaining all the way through, every time — see Section 3 "Coding notes".
   - The action prop is a plain string. NEVER routed through `~/components/Link` or any locale-prefixing helper — see PITFALL above.
   - Hidden `_gotcha` honeypot input is present and uses **off-screen positioning** (inline style with `position:'absolute'; left:'-9999px'`), NOT `className="hidden"` (which Tailwind compiles to `display: none` and which bots that respect CSS will skip). Document in the JSX as shown.
@@ -483,6 +497,7 @@ Required structure (see Section 3 "DOM structure (concrete)" for the row layout)
 ### 6. Run `npm run lint`. Fix any issues.
 
 ### 7. Run `npm run build`. Confirm:
+
 - Codegen pass completes without errors.
 - No TypeScript-via-JSDoc errors surface.
 - The production build succeeds.

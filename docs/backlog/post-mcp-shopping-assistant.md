@@ -24,6 +24,7 @@ The four items below are prioritized by both dependency and cost-benefit:
 **Surfacing context:** QA rounds 1, 2, 3 of the mcp-shopping-assistant build; the QA agent identified that Hydrogen's validator runs sequential `if (!product.X)` checks and stops at the first failure. Plans written without explicit contract enumeration trigger this pattern repeatedly.
 
 **Scope notes:** Not a feature plan. The work is a one-time update to two agent prompts:
+
 - `~/.claude/agents/architect.md` — add a requirement that every plan enumerate full component contracts (required props, payload fields, validation rules) for all Hydrogen components, MCP tools, or platform APIs it references.
 - `~/.claude/agents/plan-reviewer.md` — add a verification step to check the enumeration against the Dev MCP tooling before signing off.
 
@@ -44,6 +45,7 @@ This is workflow infrastructure, not code.
 **Surfacing context:** The project `CLAUDE.md` "Deploy targets" section notes no production deploy target is configured. The `/ship` slash command is non-operational by design (see `.claude/agents/devops.md` refusal condition). This was observed during the final stages of the mcp-shopping-assistant build when attempting to verify `/ship` readiness.
 
 **Scope notes:** Not a feature plan. The work includes:
+
 - Deciding on the AWS service (likely ECS, App Runner, Lambda, or Amplify depending on Hydrogen's runtime requirements and operator preference).
 - Configuring CI/CD (GitHub Actions or equivalent).
 - Documenting the deployment procedure.
@@ -62,13 +64,15 @@ This is workflow infrastructure, not code.
 
 **Why it matters:** The current implementation targets the standard `/api/mcp` endpoint whose cart tools are on a deprecation track toward UCP Cart MCP. UCP offers the richer catalog response format intended by Spring '26. Migration unblocks that format.
 
-**Dependencies:** 
+**Dependencies:**
+
 - Item (a) — to benefit from component contract enumeration in the plan phase.
 - Item (b) — so the migration can ship to production rather than terminating at QA + sign-off.
 
 **Surfacing context:** The Coder's §8.1 probe cycle during the mcp-shopping-assistant build found `/api/ucp/mcp` returns 302 → /password (dev-store storefront password enabled), forcing a pivot to the standard `/api/mcp` endpoint. The memory file `dev-store-password-blocks-ucp-mcp.md` documents this constraint and should be updated once cleared.
 
 **Scope notes:** Not a feature plan yet, but this is a full squad workflow:
+
 - Remove or disable the storefront password from the hydrogen-storefront dev store (or set up a separate publicly-accessible dev store).
 - Probe the UCP surface against the now-reachable `/api/ucp/mcp` endpoint to capture the response shape.
 - Document shape differences from the current `/api/mcp` implementation.
@@ -92,6 +96,7 @@ This is workflow infrastructure, not code.
 **Surfacing context:** Dependency and version state observed during the mcp-shopping-assistant build. Deprecation warnings noted during `npm run dev` and `npm run build` runs (Vite CJS deprecation, React Router v3 future flags). The Hydrogen upgrade includes a Remix-to-React-Router v7 migration, API version bump to 2025.4 Storefront API, cookie system rework, and analytics improvements — all substantive changes.
 
 **Scope notes:** Not a feature plan. This is a **phased upgrade** work:
+
 - Use `/investigate` to map breaking changes between 2025.1.1 and 2026.4.3.
 - Write a plan documenting the phases and QA gates.
 - Implement in phases (Hydrogen version bump, then CLI upgrade, then React Router future flags evaluation).

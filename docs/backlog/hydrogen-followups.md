@@ -1,4 +1,3 @@
-
 ## Replace placeholder social URLs in app/lib/const.js
 
 **Discovered during:** add-site-footer QA pass (2026-05-18).

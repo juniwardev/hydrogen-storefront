@@ -63,10 +63,10 @@ The fragment is unchanged; only the operation header gets the new variable line.
 
 ## 4. Affected files and modules
 
-| File | Change |
-|------|--------|
-| `app/routes/($locale).products.$productHandle.jsx` | Add `$selectedOptions: [SelectedOptionInput!]!` to the `PRODUCT_QUERY` variable list (lines 500–504). |
-| `storefrontapi.generated.d.ts` | Will be regenerated automatically by `npm run build` (the `--codegen` flag). Do NOT hand-edit. The Coder must accept whatever codegen emits — the file's diff shape is not specified by this plan; the only requirement is that `npm run build` exits cleanly afterward. |
+| File                                               | Change                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `app/routes/($locale).products.$productHandle.jsx` | Add `$selectedOptions: [SelectedOptionInput!]!` to the `PRODUCT_QUERY` variable list (lines 500–504).                                                                                                                                                                    |
+| `storefrontapi.generated.d.ts`                     | Will be regenerated automatically by `npm run build` (the `--codegen` flag). Do NOT hand-edit. The Coder must accept whatever codegen emits — the file's diff shape is not specified by this plan; the only requirement is that `npm run build` exits cleanly afterward. |
 
 No other files are touched. The investigation explicitly cleared `app/components/Cart.jsx`, `app/lib/seo.server.js`, and `app/data/fragments.js` — those use `selectedOptions` as a field, not a query variable.
 
@@ -200,6 +200,7 @@ Execute in order. Do not skip steps.
    ```
 
 4. **Pre-save audit** (per project conventions in `CLAUDE.md`):
+
    - Confirm no duplicate `loader` exports were introduced.
    - Confirm no unused imports were added (none should be — this is a string-literal change).
    - Confirm the template literal is still syntactically valid (no stray backticks, no broken interpolations).
@@ -248,12 +249,14 @@ Execute in order. Do not skip steps.
    ```
 
    Verify:
+
    - HTTP 200 response.
    - Page renders product title, price, image(s), and variant selector (if the product has multiple variants).
    - No React hydration warnings in the DevTools console.
    - Selecting a variant updates the URL and the displayed variant (this exercises `selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions)`).
 
    9c. **Analytics Contract verification** (project requirement per `CLAUDE.md`). Open DevTools and confirm one of the following:
+
    - The React component tree (via React DevTools) contains `<Analytics.ProductView>` and its `data` prop includes `products[0].variantId` set to a non-empty string, OR
    - The analytics event fires (visible in the Network tab or console, depending on the analytics sink) with a non-empty `variantId`.
 

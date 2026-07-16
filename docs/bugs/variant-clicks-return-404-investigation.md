@@ -33,8 +33,9 @@ The root issue is that the route code expects `variantUriQuery` to already inclu
 There are two viable approaches:
 
 **Option A (Recommended):** Modify the route to prepend `?` to the `variantUriQuery` before passing it to `<Link>`. This can be done either:
-  - Inline at the two `<Link>` usage points (lines 274 and 299), passing `to={`?${value.variantUriQuery}`}`
-  - By adding a local helper function to wrap the SDK output (e.g., `getVariantLinks()`) that enriches each option value with a properly formatted URL
+
+- Inline at the two `<Link>` usage points (lines 274 and 299), passing `to={`?${value.variantUriQuery}`}`
+- By adding a local helper function to wrap the SDK output (e.g., `getVariantLinks()`) that enriches each option value with a properly formatted URL
 
 **Option B:** Create a custom variant link helper in `app/lib/` that takes the raw SDK output and rewrites `variantUriQuery` to include the `?` prefix, then use that throughout the component.
 

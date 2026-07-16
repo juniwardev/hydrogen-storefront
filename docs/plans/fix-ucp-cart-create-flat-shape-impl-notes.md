@@ -24,6 +24,7 @@ non-blocking review recommendations (NB-1, NB-2).
 ## Files changed
 
 1. **`app/lib/mcp.server.js`**
+
    - `createCart()` JSDoc response-shape comment (~§339–348): replaced the
      "nested at `structuredContent.cart`" claim with the live-probed flat
      shape, explaining why the old comment was wrong (inferred from Dev MCP
@@ -44,13 +45,14 @@ non-blocking review recommendations (NB-1, NB-2).
      to `createCheckout` (deliberately out of scope per plan §3/AL-2).
 
 2. **`app/lib/mcp-normalize.js`** — `normalizeCart()` JSDoc doc-only fix (§5.5):
+
    - Header comment: `... (from create_cart / update_cart structuredContent.cart)` → `... (from create_cart / update_cart, whose payload is the flat structuredContent cart object — no .cart wrapper)`
    - `@param {object} rawCart - structuredContent.cart` → `@param {object} rawCart - the flat structuredContent cart object`
    - No code change.
 
 3. **`app/lib/mcp.server.test.js`** — added `createCart, updateCart` to the
    existing import, and a new `describe('createCart / updateCart — flat UCP
-   cart payload', ...)` block with the plan's 4 required cases (§8), reusing
+cart payload', ...)` block with the plan's 4 required cases (§8), reusing
    `plainFetch`, `BASE_OPTS`, and `__resetForTests()` from the existing
    harness. Did not add the plan's optional 5th (thrown-`tool_error`) case —
    the plan listed it as optional/not required, and case coverage for thrown
@@ -119,13 +121,16 @@ the investigation's live curl probe.
 ℹ pass 63
 ℹ fail 2
 ```
+
 Failure detail for case 1 (and identically for case 3):
+
 ```
 AssertionError [ERR_ASSERTION]: a successful create_cart must not yield cart:null
   actual: null
   expected: null (i.e. asserted NOT-equal, but actual WAS null)
   operator: notStrictEqual
 ```
+
 This confirms `payload.cart ?? null` fires on every success (`payload.cart`
 is `undefined` on the flat shape), exactly as the investigation describes.
 
@@ -186,6 +191,7 @@ regenerated/touched (as expected — this fix has no data-contract changes).
 ## Deviations from the plan
 
 None. All changes match plan §5 exactly:
+
 - `createCart`/`updateCart` return + comment fix (§5.2/§5.3) — done as specified.
 - `createCheckout` comment-only correction (§5.4), code untouched — done.
 - `mcp-normalize.js` JSDoc fix (§5.5) — done.

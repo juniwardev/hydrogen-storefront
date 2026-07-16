@@ -17,11 +17,17 @@ import type {
 } from '@shopify/hydrogen/storefront-api-types';
 
 export interface FeaturedCollectionData {
-  featuredCollection: Pick<Collection, 'id' | 'title' | 'handle' | 'description'> & {
+  featuredCollection: Pick<
+    Collection,
+    'id' | 'title' | 'handle' | 'description'
+  > & {
     products: {
       nodes: Array<
         Pick<Product, 'id' | 'title' | 'handle'> & {
-          featuredImage: Pick<Image, 'url' | 'altText' | 'width' | 'height'> | null;
+          featuredImage: Pick<
+            Image,
+            'url' | 'altText' | 'width' | 'height'
+          > | null;
           priceRange: {
             minVariantPrice: Pick<MoneyV2, 'amount' | 'currencyCode'>;
           };
@@ -80,11 +86,14 @@ import {json, type LoaderFunctionArgs} from '@shopify/remix-oxygen';
 
 export async function loader({context}: LoaderFunctionArgs) {
   const {storefront} = context;
-  const {featuredCollection} = await storefront.query(FEATURED_COLLECTION_QUERY, {
-    variables: {
-      handle: 'featured', // Standard handle for featured products
+  const {featuredCollection} = await storefront.query(
+    FEATURED_COLLECTION_QUERY,
+    {
+      variables: {
+        handle: 'featured', // Standard handle for featured products
+      },
     },
-  });
+  );
 
   if (!featuredCollection) {
     throw new Response('Featured Collection Not Found', {status: 404});
@@ -112,7 +121,10 @@ import type {
 
 export interface ProductData {
   product: Pick<Product, 'id' | 'title' | 'handle' | 'descriptionHtml'> & {
-    selectedVariant: Pick<ProductVariant, 'id' | 'availableForSale' | 'sku' | 'title'> & {
+    selectedVariant: Pick<
+      ProductVariant,
+      'id' | 'availableForSale' | 'sku' | 'title'
+    > & {
       image: Pick<Image, 'url' | 'altText' | 'width' | 'height'> | null;
       price: Pick<MoneyV2, 'amount' | 'currencyCode'>;
       compareAtPrice: Pick<MoneyV2, 'amount' | 'currencyCode'> | null;
@@ -219,6 +231,7 @@ export async function loader({params, request, context}: LoaderFunctionArgs) {
 ```
 
 ## Global Standards
+
 1. **Typing:** Use `@shopify/hydrogen/storefront-api-types` for all base types.
 2. **Fragments:** Use GraphQL fragments for repetitive structures like Money and Image objects.
 3. **Context:** Always include `@inContext(country: $country, language: $language)` to support localization and internationalization.

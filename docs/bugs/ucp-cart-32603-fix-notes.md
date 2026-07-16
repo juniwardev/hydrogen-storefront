@@ -9,10 +9,11 @@
 The `-32603` crash is **not** a Shopify-side defect awaiting a patch, and it is **not** the "validator/resolver contradiction" this document originally hypothesized. The real cause: `create_cart`/`create_checkout` require the store's **agentic commerce sales channel** to be provisioned, and on a development store that channel only becomes available once the store is **published AND storefront-password protection is removed**. With the channel unprovisioned, the resolver crashes with an unhandled `-32603` instead of returning a clean "channel unavailable" error.
 
 **Corroborating evidence (both public Shopify sources):**
-- **Community thread #34081** (`tools/call create_checkout and create_cart tool error`): byte-identical failure — same `-32603 "Core client error"`, same `gid://shopify/ProductVariant/<id>` shape, same password-protected dev store, both `create_cart` + `create_checkout`. The OP **resolved it** by publishing the store and removing password protection, and noted *"the agentic channel was not available in our store"* until then. A Shopify staffer could not reproduce it on a store where the channel was already available.
-- **Community thread #34499** (`Storefront ucp access for password-protected store`): Shopify staff (Donal-Shopify) stated verbatim — *"If the Online Store password is enabled, `/api/ucp/mcp` is protected by the same storefront password gate"* and *"There is no supported way to make that merchant scoped UCP MCP endpoint publicly accessible while keeping the storefront password enabled at the moment."* Recommendation: use a separate store with password protection disabled.
 
-**Why our shim still let `search_catalog` through:** the DEV-ONLY `_shopify_essential` cookie shim clears the password *read* gate (an unsupported workaround — exactly the thing #34499 says has no supported form). Reads succeed; cart/checkout additionally need the agentic channel, which the locked dev store never provisions — hence the crash. Both Shopify statements are fully consistent with our probe evidence once the shim is accounted for.
+- **Community thread #34081** (`tools/call create_checkout and create_cart tool error`): byte-identical failure — same `-32603 "Core client error"`, same `gid://shopify/ProductVariant/<id>` shape, same password-protected dev store, both `create_cart` + `create_checkout`. The OP **resolved it** by publishing the store and removing password protection, and noted _"the agentic channel was not available in our store"_ until then. A Shopify staffer could not reproduce it on a store where the channel was already available.
+- **Community thread #34499** (`Storefront ucp access for password-protected store`): Shopify staff (Donal-Shopify) stated verbatim — _"If the Online Store password is enabled, `/api/ucp/mcp` is protected by the same storefront password gate"_ and _"There is no supported way to make that merchant scoped UCP MCP endpoint publicly accessible while keeping the storefront password enabled at the moment."_ Recommendation: use a separate store with password protection disabled.
+
+**Why our shim still let `search_catalog` through:** the DEV-ONLY `_shopify_essential` cookie shim clears the password _read_ gate (an unsupported workaround — exactly the thing #34499 says has no supported form). Reads succeed; cart/checkout additionally need the agentic channel, which the locked dev store never provisions — hence the crash. Both Shopify statements are fully consistent with our probe evidence once the shim is accounted for.
 
 **Consequence for `theme-evolution-os2-hydrogen`:** as a password-locked dev store, cart/checkout parity is **unreachable** here — by prerequisite, not by bug. `search_catalog` (via the shim) is the real ceiling. Unblocking cart requires a store with **password off + agentic channel provisioned**.
 
@@ -67,26 +68,41 @@ not a reimplementation. Store: `theme-evolution-os2-hydrogen.myshopify.com`.
 
 ### A. Baseline id-shape matrix (product: "The Complete Snowboard", variant "Ice")
 
-| id shape sent as `line_items[0].item.id` | HTTP | Result |
-|---|---|---|
-| `gid://shopify/ProductVariant/50239737331932` (real variant GID from live `search_catalog`) | **500** | `-32603 "Core client error"` |
-| `50239737331932` (numeric, same variant) | 200 | Business-error: `"is not a valid ProductVariant GID (got: \"50239737331932\")"` |
-| `gid://shopify/Product/9356160729308` (Product GID, same product) | 200 | Business-error: `"is not a valid ProductVariant GID (got: \"gid://shopify/Product/9356160729308\")"` |
-| numeric id as JSON integer (not string) | 200 | Schema rejection: `"value at /cart/line_items/0/item/id is not a string"` (confirms schema wants a string; ruled out) |
-| base64-encoded form of the variant GID | **500** | Same crash — rules out "needs an opaque/encoded id" theory |
-| Same variant GID, URL-encoded slashes | **500** | Same crash |
-| Same variant GID + a `legacy_id` sibling field on `item` | **500** | Same crash — extra fields don't help |
+| id shape sent as `line_items[0].item.id`                                                    | HTTP    | Result                                                                                                                |
+| ------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------- |
+| `gid://shopify/ProductVariant/50239737331932` (real variant GID from live `search_catalog`) | **500** | `-32603 "Core client error"`                                                                                          |
+| `50239737331932` (numeric, same variant)                                                    | 200     | Business-error: `"is not a valid ProductVariant GID (got: \"50239737331932\")"`                                       |
+| `gid://shopify/Product/9356160729308` (Product GID, same product)                           | 200     | Business-error: `"is not a valid ProductVariant GID (got: \"gid://shopify/Product/9356160729308\")"`                  |
+| numeric id as JSON integer (not string)                                                     | 200     | Schema rejection: `"value at /cart/line_items/0/item/id is not a string"` (confirms schema wants a string; ruled out) |
+| base64-encoded form of the variant GID                                                      | **500** | Same crash — rules out "needs an opaque/encoded id" theory                                                            |
+| Same variant GID, URL-encoded slashes                                                       | **500** | Same crash                                                                                                            |
+| Same variant GID + a `legacy_id` sibling field on `item`                                    | **500** | Same crash — extra fields don't help                                                                                  |
 
 **Raw captured response for the crash (redacted only for whitespace):**
+
 ```json
-{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error","data":"Internal error calling tool create_cart: Core client error"}}
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "error": {
+    "code": -32603,
+    "message": "Internal error",
+    "data": "Internal error calling tool create_cart: Core client error"
+  }
+}
 ```
 
 **Raw captured response for the numeric-id business-error:**
+
 ```json
-{"type":"error","content_type":"plain","code":"invalid_input",
- "content":"is not a valid ProductVariant GID (got: \"50239737331932\")",
- "severity":"unrecoverable","path":"$.line_items[0].item.id"}
+{
+  "type": "error",
+  "content_type": "plain",
+  "code": "invalid_input",
+  "content": "is not a valid ProductVariant GID (got: \"50239737331932\")",
+  "severity": "unrecoverable",
+  "path": "$.line_items[0].item.id"
+}
 ```
 
 ### B. Bisecting exactly what triggers the crash
@@ -94,20 +110,20 @@ not a reimplementation. Store: `theme-evolution-os2-hydrogen.myshopify.com`.
 This is the key new evidence beyond the original investigation. Testing the
 `gid://shopify/ProductVariant/<suffix>` shape with varying suffixes:
 
-| suffix | HTTP | Result |
-|---|---|---|
-| *(empty string)* — `gid://shopify/ProductVariant/` | 200 | Clean rejection: `"is not a valid ProductVariant GID (got: \"gid://shopify/ProductVariant/\")"` |
-| single space — `gid://shopify/ProductVariant/ ` | 200 | Clean rejection (same message) |
-| `1` | **500** | Crash |
-| `xyz` (garbage, non-numeric) | **500** | Crash |
-| `50239737331932` (real, live, available variant id) | **500** | Crash |
-| `?extra=1` appended to a real GID | **500** | Crash |
+| suffix                                              | HTTP    | Result                                                                                          |
+| --------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------- |
+| _(empty string)_ — `gid://shopify/ProductVariant/`  | 200     | Clean rejection: `"is not a valid ProductVariant GID (got: \"gid://shopify/ProductVariant/\")"` |
+| single space — `gid://shopify/ProductVariant/ `     | 200     | Clean rejection (same message)                                                                  |
+| `1`                                                 | **500** | Crash                                                                                           |
+| `xyz` (garbage, non-numeric)                        | **500** | Crash                                                                                           |
+| `50239737331932` (real, live, available variant id) | **500** | Crash                                                                                           |
+| `?extra=1` appended to a real GID                   | **500** | Crash                                                                                           |
 
 **Conclusion:** the crash trigger is the literal prefix match
 `gid://shopify/ProductVariant/` combined with **any non-empty suffix** —
 independent of whether the suffix is numeric, garbage, or a real live variant
 id. The store's handler appears to recognize the resource-type prefix and
-attempt to *resolve/dereference* it, and that resolution step is what
+attempt to _resolve/dereference_ it, and that resolution step is what
 crashes — not the schema-level string validation (schema validation passes
 for all of the above; the crash happens one layer deeper, inside "Core client
 error").
@@ -123,10 +139,10 @@ never crashes.
 Ran the same "real ProductVariant GID" probe against `create_cart` for
 products found via `search_catalog` across distinct queries:
 
-| Product | Variant GID | HTTP |
-|---|---|---|
-| The Complete Snowboard | `gid://shopify/ProductVariant/50239737331932` | 500 |
-| The Multi-managed Snowboard | `gid://shopify/ProductVariant/50239736971484` | 500 |
+| Product                     | Variant GID                                   | HTTP |
+| --------------------------- | --------------------------------------------- | ---- |
+| The Complete Snowboard      | `gid://shopify/ProductVariant/50239737331932` | 500  |
+| The Multi-managed Snowboard | `gid://shopify/ProductVariant/50239736971484` | 500  |
 
 (Catalog searches for `hoodie`, `shirt`, `ball cap`, `gift card` returned zero
 results on this store — it is snowboard-sample-data only — so cross-product
@@ -142,11 +158,11 @@ both crash identically, ruling out a single corrupted variant record.)
   be isolated this way.
 - `update_cart` with the same nonexistent-but-well-formed Cart GID + a
   **numeric** item id → clean business-error `"is not a valid ProductVariant
-  GID (got: \"50239737331932\")"` — consistent with `create_cart`'s numeric
+GID (got: \"50239737331932\")"` — consistent with `create_cart`'s numeric
   path (no crash for numeric via `update_cart` either, but also no cart).
 - `create_checkout` (direct, no `cart_id`) with the real ProductVariant GID
   → **500**, byte-identical error shape (`-32603 "Internal error calling tool
-  create_checkout: Core client error"`).
+create_checkout: Core client error"`).
 - `create_checkout` with numeric id / Product GID → clean business-error,
   same message pattern as `create_cart`.
 
@@ -298,18 +314,19 @@ as expected.
 
 ### create_cart
 
-| Field | Value |
-|---|---|
-| **UTC Timestamp** | `2026-07-10T19:03:21.221Z` |
-| **HTTP Status** | 500 |
+| Field                  | Value                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| **UTC Timestamp**      | `2026-07-10T19:03:21.221Z`                                              |
+| **HTTP Status**        | 500                                                                     |
 | **Primary Request-ID** | `425e0ddf-08a6-4846-8ebe-e226a2365c51-1783710201` (x-request-id header) |
-| **Cloudflare Ray** | `a191d3f5cf44dbba-LAX` (cf-ray header) |
-| **Data Center** | `gcp-us-west1` (x-dc header) |
-| **Error Code** | -32603 |
-| **Error Message** | Internal error |
-| **Error Data** | "Internal error calling tool create_cart: Core client error" |
+| **Cloudflare Ray**     | `a191d3f5cf44dbba-LAX` (cf-ray header)                                  |
+| **Data Center**        | `gcp-us-west1` (x-dc header)                                            |
+| **Error Code**         | -32603                                                                  |
+| **Error Message**      | Internal error                                                          |
+| **Error Data**         | "Internal error calling tool create_cart: Core client error"            |
 
 **Full response headers (set-cookie values redacted):**
+
 ```
 access-control-allow-origin: *
 alt-svc: h3=":443"; ma=86400
@@ -340,18 +357,19 @@ x-xss-protection: 1; mode=block
 
 ### create_checkout
 
-| Field | Value |
-|---|---|
-| **UTC Timestamp** | `2026-07-10T19:03:21.524Z` |
-| **HTTP Status** | 500 |
+| Field                  | Value                                                                   |
+| ---------------------- | ----------------------------------------------------------------------- |
+| **UTC Timestamp**      | `2026-07-10T19:03:21.524Z`                                              |
+| **HTTP Status**        | 500                                                                     |
 | **Primary Request-ID** | `5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201` (x-request-id header) |
-| **Cloudflare Ray** | `a191d3f7a81cdbba-LAX` (cf-ray header) |
-| **Data Center** | `gcp-us-west1` (x-dc header) |
-| **Error Code** | -32603 |
-| **Error Message** | Internal error |
-| **Error Data** | "Internal error calling tool create_checkout: Core client error" |
+| **Cloudflare Ray**     | `a191d3f7a81cdbba-LAX` (cf-ray header)                                  |
+| **Data Center**        | `gcp-us-west1` (x-dc header)                                            |
+| **Error Code**         | -32603                                                                  |
+| **Error Message**      | Internal error                                                          |
+| **Error Data**         | "Internal error calling tool create_checkout: Core client error"        |
 
 **Full response headers (set-cookie values redacted):**
+
 ```
 access-control-allow-origin: *
 alt-svc: h3=":443"; ma=86400
@@ -393,6 +411,7 @@ in the line_items. The request-id headers below can be used to trace server-side
 - **create_checkout**: `x-request-id: 5ed62056-da94-48c5-bbaa-10287f82c38c-1783710201` (captured at 2026-07-10T19:03:21.524Z)
 
 Secondary correlation identifiers present:
+
 - Cloudflare Ray IDs: `a191d3f5cf44dbba-LAX` (create_cart), `a191d3f7a81cdbba-LAX` (create_checkout)
 - Data center: GCP US-West1 (gcp-us-west1)
 - Server-Timing headers contain additional diagnostic metadata (processing, db, fetch times)

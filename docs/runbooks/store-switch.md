@@ -16,18 +16,19 @@ UCP cart/checkout path can do.
 
 ## The two store profiles
 
-| | **ashford-quantum** (current) | **theme-evolution-os2-hydrogen** |
-| :--- | :--- | :--- |
-| `PUBLIC_STORE_DOMAIN` | `ashford-quantum.myshopify.com` | `theme-evolution-os2-hydrogen.myshopify.com` |
-| `PUBLIC_CHECKOUT_DOMAIN` | `ashford-quantum.myshopify.com` | `theme-evolution-os2-hydrogen.myshopify.com` |
-| Storefront password | **disabled** (public, Basic plan) | **enabled** (password-gated dev store) |
-| `UCP_AUTH_MODE` | `none` | `dev-cookie` |
-| `DEV_STOREFRONT_PASSWORD` | not needed / absent | **required**, must be in `.env` |
-| Agentic commerce channel | provisioned | **not** provisioned |
-| UCP `search_catalog` | ✅ works | ✅ works (via dev-cookie shim) |
-| UCP `create_cart` / `create_checkout` | ✅ works (real cart + checkout) | ❌ blocked — see [Capability note](#capability-note-cartcheckout) |
+|                                       | **ashford-quantum** (current)     | **theme-evolution-os2-hydrogen**                                  |
+| :------------------------------------ | :-------------------------------- | :---------------------------------------------------------------- |
+| `PUBLIC_STORE_DOMAIN`                 | `ashford-quantum.myshopify.com`   | `theme-evolution-os2-hydrogen.myshopify.com`                      |
+| `PUBLIC_CHECKOUT_DOMAIN`              | `ashford-quantum.myshopify.com`   | `theme-evolution-os2-hydrogen.myshopify.com`                      |
+| Storefront password                   | **disabled** (public, Basic plan) | **enabled** (password-gated dev store)                            |
+| `UCP_AUTH_MODE`                       | `none`                            | `dev-cookie`                                                      |
+| `DEV_STOREFRONT_PASSWORD`             | not needed / absent               | **required**, must be in `.env`                                   |
+| Agentic commerce channel              | provisioned                       | **not** provisioned                                               |
+| UCP `search_catalog`                  | ✅ works                          | ✅ works (via dev-cookie shim)                                    |
+| UCP `create_cart` / `create_checkout` | ✅ works (real cart + checkout)   | ❌ blocked — see [Capability note](#capability-note-cartcheckout) |
 
 The full store-specific env values live in the env files, not here:
+
 - **ashford-quantum** → the current `.env`.
 - **theme-evolution-os2-hydrogen** → `.env.backup-pre-ashford` (the snapshot taken
   before the ashford switch).
@@ -64,7 +65,7 @@ before some later keys were added. Compared with the current `.env`, the backup:
   `PUBLIC_CUSTOMER_ACCOUNT_API_URL`, which the current `.env` carries.
 
 So a naive `cp .env.backup-pre-ashford .env` would **silently drop** those three
-keys. Treat the backup as the source for the *store-specific* values
+keys. Treat the backup as the source for the _store-specific_ values
 (domains, tokens, password), and carry forward any newer keys the app now expects.
 When in doubt, diff the **key sets** (not the values):
 

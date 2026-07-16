@@ -15,7 +15,10 @@ export function CountrySelector() {
   const rootData = useRouteLoaderData('root');
   const selectedLocale = rootData?.selectedLocale ?? DEFAULT_LOCALE;
   const {pathname, search} = useLocation();
-  const pathWithoutLocale = `${pathname.replace(selectedLocale.pathPrefix, '')}${search}`;
+  const pathWithoutLocale = `${pathname.replace(
+    selectedLocale.pathPrefix,
+    '',
+  )}${search}`;
 
   const countries = fetcher.data ?? {};
   const defaultLocale = countries?.['default'];

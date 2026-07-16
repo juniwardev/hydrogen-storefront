@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import {Image} from '@shopify/hydrogen';
+
 import {Heading, Text} from '~/components/Text';
 import {Link} from '~/components/Link';
 
@@ -31,11 +32,7 @@ export function Hero({
         <div className="absolute inset-0 grid flex-grow grid-flow-col pointer-events-none auto-cols-fr -z-10 content-stretch overflow-clip">
           {image && (
             <div>
-              <SpreadMedia
-                sizes="100vw"
-                data={image}
-                loading={loading}
-              />
+              <SpreadMedia sizes="100vw" data={image} loading={loading} />
             </div>
           )}
         </div>

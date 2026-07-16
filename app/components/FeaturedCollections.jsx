@@ -1,4 +1,5 @@
 import {Image} from '@shopify/hydrogen';
+
 import {Heading, Section} from '~/components/Text';
 import {Grid} from '~/components/Grid';
 import {Link} from '~/components/Link';

@@ -67,12 +67,12 @@ matches plan §7's wiring instruction exactly).
 
 **Before/after per site** (see `git diff` above for the exact patch; summarized here):
 
-| Site | Before | After |
-| :--- | :--- | :--- |
-| Primary / truthy (old `:179-182`) | `return json({reply, cart});` using the shared hardcoded `reply` | `return json({reply: composeAddReply({checkoutUrl: cart.checkoutUrl}), cart});` |
-| Primary / fallback (old `:193-196`) | `return json({reply, cart: {...cart, checkoutUrl: checkout?.checkoutUrl}});` | Resolves `const checkoutUrl = checkout?.checkoutUrl;` once, then `return json({reply: composeAddReply({checkoutUrl}), cart: {...cart, checkoutUrl}});` |
-| Retry / truthy (old `:224-229`) | `reply: 'Started a new cart and added the item — checkout here.'` hardcoded | `reply: composeAddReply({checkoutUrl: cart.checkoutUrl, cartReset: true})` |
-| Retry / fallback (old `:241-245`) | same hardcoded string + `checkoutUrl: checkout?.checkoutUrl` | Resolves `const checkoutUrl = checkout?.checkoutUrl;` once, then `reply: composeAddReply({checkoutUrl, cartReset: true})`, `cart: {...cart, checkoutUrl}` |
+| Site                                | Before                                                                       | After                                                                                                                                                     |
+| :---------------------------------- | :--------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Primary / truthy (old `:179-182`)   | `return json({reply, cart});` using the shared hardcoded `reply`             | `return json({reply: composeAddReply({checkoutUrl: cart.checkoutUrl}), cart});`                                                                           |
+| Primary / fallback (old `:193-196`) | `return json({reply, cart: {...cart, checkoutUrl: checkout?.checkoutUrl}});` | Resolves `const checkoutUrl = checkout?.checkoutUrl;` once, then `return json({reply: composeAddReply({checkoutUrl}), cart: {...cart, checkoutUrl}});`    |
+| Retry / truthy (old `:224-229`)     | `reply: 'Started a new cart and added the item — checkout here.'` hardcoded  | `reply: composeAddReply({checkoutUrl: cart.checkoutUrl, cartReset: true})`                                                                                |
+| Retry / fallback (old `:241-245`)   | same hardcoded string + `checkoutUrl: checkout?.checkoutUrl`                 | Resolves `const checkoutUrl = checkout?.checkoutUrl;` once, then `reply: composeAddReply({checkoutUrl, cartReset: true})`, `cart: {...cart, checkoutUrl}` |
 
 Pre-save full-file audit performed: no duplicate exports (single `action`/`AssistantApiRoute`
 default export), no leftover unused `reply` const, no unresolved imports, no conflicting
@@ -93,7 +93,7 @@ declarations.
 ## Bug fix verification approach
 
 Ties to the bug report's "Steps to reproduce" (marked "Not reproduced live" — the dangling-CTA
-state requires both an absent cart `continue_url` *and* a soft-error `create_checkout`, which is
+state requires both an absent cart `continue_url` _and_ a soft-error `create_checkout`, which is
 hard to force in a live dev-store session). Per the plan, the **primary guard is the unit test
 suite** on the pure helper, since it makes the otherwise-unreachable fallback branch directly
 testable without mocking three MCP calls:

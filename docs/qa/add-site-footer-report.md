@@ -39,10 +39,12 @@ Screenshot: `/tmp/qa-footer-final.png`
 ### c. Newsletter form submission
 
 **Hydration state:**
+
 - SSR source contains `disabled=""` on both the email input and submit button — confirms `useIsHydrated` returns false during SSR.
 - After hydration (2 s wait in headless browser), both input and button become enabled — confirms `useIsHydrated` flips correctly after mount.
 
 **Valid email submission:**
+
 - Fetcher sends `POST /api/newsletter?_data=routes%2F%28%24locale%29.api.newsletter`
 - Server responds HTTP 200 with `{"ok":true,"message":"Thanks for subscribing."}`
 - `<p role="status">Thanks for subscribing.</p>` appears in the footer after submit.
@@ -50,15 +52,18 @@ Screenshot: `/tmp/qa-footer-final.png`
 - PASS
 
 **Invalid email submission (server-side validation):**
+
 - Direct POST with `email=notvalid` returns HTTP 400 with `{"ok":false,"message":"Please enter a valid email address."}`
 - When browser validation is bypassed, `<p role="alert">Please enter a valid email address.</p>` appears in the footer.
 - PASS
 
 **Honeypot:**
+
 - POST with `_gotcha=I am a bot` returns HTTP 200 with the fake success message `{"ok":true,"message":"Thanks for subscribing."}`.
 - PASS
 
 **No raw JSON displayed to user:**
+
 - The fetcher-based form never produces raw JSON output to the user.
 - PASS
 
@@ -131,6 +136,7 @@ Screenshot: `/tmp/qa-footer-final.png`
 The impl notes correctly document this, but it surfaces as a nit in QA because the plan's Definition of Done (Section 6 Open Question #2) states "Operator must populate the `SOCIAL_LINKS` hrefs in `app/lib/const.js` before this feature is considered done."
 
 Current state in `app/lib/const.js`:
+
 ```js
 {platform: 'instagram', href: 'https://www.instagram.com/shopify', ...}
 {platform: 'twitter-x', href: 'https://x.com/shopify', ...}
@@ -168,11 +174,11 @@ This is expected Vite/Remix dev server behavior: route discovery happens at star
 
 ## Console errors and warnings
 
-| Source | Type | Message | Caused by this feature? |
-|--------|------|---------|------------------------|
-| Product page | Warning | `React does not recognize 'preserveControl' prop on a DOM element` at `Link.jsx` / `ProductForm` | No — pre-existing |
-| monorail-edge.shopifysvc.com | Error | CORS preflight blocked | No — pre-existing analytics CORS on localhost |
-| Newsletter invalid-email test | Error | `Failed to load resource: 400` | No — expected HTTP 400 responses from newsletter action |
+| Source                        | Type    | Message                                                                                          | Caused by this feature?                                 |
+| ----------------------------- | ------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| Product page                  | Warning | `React does not recognize 'preserveControl' prop on a DOM element` at `Link.jsx` / `ProductForm` | No — pre-existing                                       |
+| monorail-edge.shopifysvc.com  | Error   | CORS preflight blocked                                                                           | No — pre-existing analytics CORS on localhost           |
+| Newsletter invalid-email test | Error   | `Failed to load resource: 400`                                                                   | No — expected HTTP 400 responses from newsletter action |
 
 Zero hydration-related warnings observed on any page.
 

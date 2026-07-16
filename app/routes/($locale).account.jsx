@@ -9,6 +9,10 @@ import {
 import {Suspense} from 'react';
 import {defer} from '@shopify/remix-oxygen';
 import {flattenConnection} from '@shopify/hydrogen';
+
+import {doLogout} from './($locale).account_.logout';
+import {getFeaturedData} from './($locale).featured-products';
+
 import {PageHeader, Text} from '~/components/Text';
 import {Button} from '~/components/Button';
 import {OrderCard} from '~/components/OrderCard';
@@ -20,9 +24,6 @@ import {FeaturedCollections} from '~/components/FeaturedCollections';
 import {usePrefixPathWithLocale} from '~/lib/utils';
 import {CACHE_NONE, routeHeaders} from '~/data/cache';
 import {CUSTOMER_DETAILS_QUERY} from '~/graphql/customer-account/CustomerDetailsQuery';
-
-import {doLogout} from './($locale).account_.logout';
-import {getFeaturedData} from './($locale).featured-products';
 
 export const headers = routeHeaders;
 

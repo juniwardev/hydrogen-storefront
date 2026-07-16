@@ -9,6 +9,8 @@ import {
 import {flattenConnection} from '@shopify/hydrogen';
 import invariant from 'tiny-invariant';
 
+import {doLogout} from './($locale).account_.logout';
+
 import {Button} from '~/components/Button';
 import {Text} from '~/components/Text';
 import {getInputStyleClasses} from '~/lib/utils';
@@ -17,8 +19,6 @@ import {
   DELETE_ADDRESS_MUTATION,
   CREATE_ADDRESS_MUTATION,
 } from '~/graphql/customer-account/CustomerAddressMutations';
-
-import {doLogout} from './($locale).account_.logout';
 
 export const handle = {
   renderInModal: true,

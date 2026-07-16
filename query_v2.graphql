@@ -1,65 +1,62 @@
-query Product(
-    $country: CountryCode
-    $language: LanguageCode
-    $handle: String!
-  ) @inContext(country: $country, language: $language) {
-    product(handle: $handle) {
-      ...Product
-      adjacentVariants {
-        ...ProductVariant
-        product {
-          handle
-        }
-      }
-      encodedVariantExistence
-      encodedVariantAvailability
-    }
-    shop {
-      name
-      primaryDomain {
-        url
-      }
-      shippingPolicy {
-        body
-        handle
-      }
-      refundPolicy {
-        body
+query Product($country: CountryCode, $language: LanguageCode, $handle: String!)
+@inContext(country: $country, language: $language) {
+  product(handle: $handle) {
+    ...Product
+    adjacentVariants {
+      ...ProductVariant
+      product {
         handle
       }
     }
+    encodedVariantExistence
+    encodedVariantAvailability
   }
-
-fragment ProductVariant on ProductVariant {
-    id
-    availableForSale
-    sku
-    title
-    image {
-      id
+  shop {
+    name
+    primaryDomain {
       url
-      altText
-      width
-      height
     }
-    price {
-      amount
-      currencyCode
+    shippingPolicy {
+      body
+      handle
     }
-    compareAtPrice {
-      amount
-      currencyCode
-    }
-    selectedOptions {
-      name
-      value
-    }
-    product {
+    refundPolicy {
+      body
       handle
     }
   }
+}
 
-fragment Product on Product {
+fragment ProductVariant on ProductVariant {
+  id
+  availableForSale
+  sku
+  title
+  image {
     id
+    url
+    altText
+    width
+    height
+  }
+  price {
+    amount
+    currencyCode
+  }
+  compareAtPrice {
+    amount
+    currencyCode
+  }
+  selectedOptions {
+    name
+    value
+  }
+  product {
     handle
   }
+}
+
+fragment Product on Product {
+  id
+  handle
+}

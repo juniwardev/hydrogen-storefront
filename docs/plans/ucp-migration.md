@@ -15,15 +15,15 @@ Date: 2026-07-08
 
 This revision addresses all seven required changes from `docs/reviews/ucp-migration-review.md`. Each is mapped to the plan section(s) where it was folded in. The idempotency-key claim (change #3) and the rate-limit `-32000` behavior (change #5) were re-verified against the Shopify Dev MCP (UCP docs, 2026-04) before editing (citations in §5.4 and §6.5 / AL-UCP-13).
 
-| # | Review required change | Addressed in |
-| :-- | :-- | :-- |
-| 1 | AL-UCP-3 prerequisite ownership — make OQ-U2 an operator-owned **pre-implementation gate**, resolved before the Coder is dispatched, not a Coder self-serve step. | New **§9.0 Operator-owned pre-implementation gate** (top of §9); OQ-U2 rewritten in §7; §4 "Not modified" env-var note reinforced. |
-| 2 | AL-UCP-3 written fallback if the cookie does NOT clear the 302. | AL-UCP-3 rewritten with a concrete two-branch fallback tied to the STOP condition; §9.1 step 1a STOP branch expanded; §2 non-goal cross-ref; §7 top-risk mitigation. |
-| 3 | §5.4 / AL-UCP-8 idempotency-key factual correction (`cancel_checkout` AND `cancel_cart` require the key per docs; `complete_checkout` too; schema requires only `ucp-agent`). | §5.4 rewritten; AL-UCP-8 rewritten; §11 Phase-2 note corrected. Re-verified via Dev MCP. |
-| 4 | Dangling `"detail"` intent fate (remove intent + wiring cleanly, no unresolved imports, no Anti-Stubbing violation). | §4 route entry expanded; new **§9.1 step 7a**; §6.7a dead-code note for `mcp-normalize.js`; §7 edge-case + non-blocking note. |
-| 5 | Rate-limit / `-32000` coverage gap — the HTTP-429 branch bypasses a `-32000`-in-body error; read `Retry-After` in BOTH paths and test the `-32000` case. | §6.5 rewritten; AL-UCP-13 rewritten; §9.1 step 5 + step 9 expanded; §10.4 unit-test list expanded. Re-verified via Dev MCP. |
-| 6 | Cookie single-flight concurrency test coverage. | §4 test-file entry expanded; §9.1 step 4 adds a concurrency assertion; §10.4 expanded; AL-UCP-10 upgraded from "resolve during coding" to a firm §9 requirement. |
-| 7 | `normalizeCart` total shape (`cart.cost.total_amount` → UCP `totals[]`). | §6.5 rewritten with explicit `totals[]` rewrite instruction; §9.1 step 6 made explicit; AL-UCP-5 resolution sharpened. |
+| #   | Review required change                                                                                                                                                        | Addressed in                                                                                                                                                         |
+| :-- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | AL-UCP-3 prerequisite ownership — make OQ-U2 an operator-owned **pre-implementation gate**, resolved before the Coder is dispatched, not a Coder self-serve step.             | New **§9.0 Operator-owned pre-implementation gate** (top of §9); OQ-U2 rewritten in §7; §4 "Not modified" env-var note reinforced.                                   |
+| 2   | AL-UCP-3 written fallback if the cookie does NOT clear the 302.                                                                                                               | AL-UCP-3 rewritten with a concrete two-branch fallback tied to the STOP condition; §9.1 step 1a STOP branch expanded; §2 non-goal cross-ref; §7 top-risk mitigation. |
+| 3   | §5.4 / AL-UCP-8 idempotency-key factual correction (`cancel_checkout` AND `cancel_cart` require the key per docs; `complete_checkout` too; schema requires only `ucp-agent`). | §5.4 rewritten; AL-UCP-8 rewritten; §11 Phase-2 note corrected. Re-verified via Dev MCP.                                                                             |
+| 4   | Dangling `"detail"` intent fate (remove intent + wiring cleanly, no unresolved imports, no Anti-Stubbing violation).                                                          | §4 route entry expanded; new **§9.1 step 7a**; §6.7a dead-code note for `mcp-normalize.js`; §7 edge-case + non-blocking note.                                        |
+| 5   | Rate-limit / `-32000` coverage gap — the HTTP-429 branch bypasses a `-32000`-in-body error; read `Retry-After` in BOTH paths and test the `-32000` case.                      | §6.5 rewritten; AL-UCP-13 rewritten; §9.1 step 5 + step 9 expanded; §10.4 unit-test list expanded. Re-verified via Dev MCP.                                          |
+| 6   | Cookie single-flight concurrency test coverage.                                                                                                                               | §4 test-file entry expanded; §9.1 step 4 adds a concurrency assertion; §10.4 expanded; AL-UCP-10 upgraded from "resolve during coding" to a firm §9 requirement.     |
+| 7   | `normalizeCart` total shape (`cart.cost.total_amount` → UCP `totals[]`).                                                                                                      | §6.5 rewritten with explicit `totals[]` rewrite instruction; §9.1 step 6 made explicit; AL-UCP-5 resolution sharpened.                                               |
 
 Additionally folded in (reviewer non-blocking observations tied to the required changes): the production-with-no-auth path is now a **loud config error** rather than a silent 302 loop (§3.4, §4.4 — supports changes #1/#2); the `"add"` handoff is biased explicitly toward the cart `continue_url` with `create_checkout` as fallback (§3.5 — reduces the Phase-1 critical path); and §5.3 now notes that `search_catalog`'s `catalog` object has no schema-required fields, so the action's empty-query guard must remain.
 
@@ -33,7 +33,7 @@ Additionally folded in (reviewer non-blocking observations tied to the required 
 
 ### Problem
 
-The shopping assistant currently talks to the **standard** Storefront MCP endpoint `https://{shop}.myshopify.com/api/mcp`. That endpoint is **deprecation-flagged**: every `search_catalog`/`update_cart` response carries a notice that the standard tools *"will no longer be accessible after August 31, 2026. Migrate to the UCP-conforming Cart MCP tools at /api/ucp/mcp"* (PROBED, impl-notes probe 2). The UCP endpoint `/api/ucp/mcp` is the destination Shopify is steering all storefront-MCP traffic toward. The assistant must migrate before the sunset, and the UCP surface is also richer (structured content, per-variant checkout URLs, capability negotiation).
+The shopping assistant currently talks to the **standard** Storefront MCP endpoint `https://{shop}.myshopify.com/api/mcp`. That endpoint is **deprecation-flagged**: every `search_catalog`/`update_cart` response carries a notice that the standard tools _"will no longer be accessible after August 31, 2026. Migrate to the UCP-conforming Cart MCP tools at /api/ucp/mcp"_ (PROBED, impl-notes probe 2). The UCP endpoint `/api/ucp/mcp` is the destination Shopify is steering all storefront-MCP traffic toward. The assistant must migrate before the sunset, and the UCP surface is also richer (structured content, per-variant checkout URLs, capability negotiation).
 
 The blocker that stopped the original UCP attempt was that **the dev store's storefront password redirects `/api/ucp/mcp` to `/password` (HTTP 302)** on every request (PROBED, impl-notes probe 1; memory `dev-store-password-blocks-ucp-mcp`). **The storefront password cannot be disabled on a Shopify dev store — it is a platform constraint, not a config choice.** This plan therefore adopts a documented **DEV-ONLY cookie-auth shim** to get past the password on the dev store, while the request contract, response parsing, and normalization are migrated to the real UCP shapes.
 
@@ -48,11 +48,11 @@ The blocker that stopped the original UCP attempt was that **the dev store's sto
 
 ### Phase-1 scope (feature parity only)
 
-| Tool | Purpose in Phase 1 |
-| :-- | :-- |
-| `search_catalog` | Natural-language product discovery. |
-| `create_cart` | Create the assistant cart with the chosen variant. |
-| `update_cart` | Add/replace line items in an existing assistant cart (**full-replace semantics**, §6.4). |
+| Tool              | Purpose in Phase 1                                                                                                                                                                 |
+| :---------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_catalog`  | Natural-language product discovery.                                                                                                                                                |
+| `create_cart`     | Create the assistant cart with the chosen variant.                                                                                                                                 |
+| `update_cart`     | Add/replace line items in an existing assistant cart (**full-replace semantics**, §6.4).                                                                                           |
 | `create_checkout` | Convert the cart into a checkout to obtain the checkout URL for handoff — **fallback only**, used when the cart response does not expose a usable `continue_url` (§3.5, AL-UCP-6). |
 
 Everything else is out of scope for Phase 1 (see §2 and the Phase-2 candidate list).
@@ -61,7 +61,7 @@ Everything else is out of scope for Phase 1 (see §2 and the Phase-2 candidate l
 
 ## 2. Non-goals
 
-- **Disabling the storefront password.** Impossible on a dev store; not attempted. The shim works *around* it. (If the shim itself fails to unblock the endpoint, the fallback is an operator action — password removal on a paid tier or a `/api/ucp/*` path exception — or deferral; see AL-UCP-3.)
+- **Disabling the storefront password.** Impossible on a dev store; not attempted. The shim works _around_ it. (If the shim itself fails to unblock the endpoint, the fallback is an operator action — password removal on a paid tier or a `/api/ucp/*` path exception — or deferral; see AL-UCP-3.)
 - **Shipping the cookie shim to production.** It is DEV-ONLY. Production auth is a paid-tier password removal or RFC 9421 signed requests (§4.4). A production build with neither the shim nor a signer must raise a **loud config error**, not silently 302-loop (§3.4, §4.4).
 - **Hosting our own agent profile.** Phase 1 uses the Shopify-hosted test fixture `https://shopify.dev/ucp/agent-profiles/2026-04-08/valid-with-capabilities.json`. Hosting our own profile (required for the Signed/Token tiers and for production capability negotiation) is **Phase 2** (§4.4).
 - **In-chat checkout completion.** `get_checkout`, `update_checkout`, `complete_checkout`, `cancel_checkout` are **not** wired in Phase 1. The assistant hands off to the checkout URL. These are Phase-2 candidates.
@@ -149,11 +149,11 @@ sequenceDiagram
 
 ### 3.3 Endpoint reachability (PROBED)
 
-| Endpoint | Reachability | Tools |
-| :-- | :-- | :-- |
-| `https://{shop}.myshopify.com/api/mcp` | HTTP 200, no auth (current) | standard tools (deprecated 2026-08-31) |
-| `https://{shop}.myshopify.com/api/ucp/mcp` | **HTTP 302 → `/password`** without the shim; **HTTP 200 with the `storefront_digest` cookie** (shim, *assumed — must be probe-confirmed, AL-UCP-3*) | 13 UCP tools (`docs/plans/ucp-tools-list.json`) |
-| `https://{shop}.myshopify.com/password` | Accepts a form POST of the password; responds `Set-Cookie: storefront_digest=…` | — |
+| Endpoint                                   | Reachability                                                                                                                                        | Tools                                           |
+| :----------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------- |
+| `https://{shop}.myshopify.com/api/mcp`     | HTTP 200, no auth (current)                                                                                                                         | standard tools (deprecated 2026-08-31)          |
+| `https://{shop}.myshopify.com/api/ucp/mcp` | **HTTP 302 → `/password`** without the shim; **HTTP 200 with the `storefront_digest` cookie** (shim, _assumed — must be probe-confirmed, AL-UCP-3_) | 13 UCP tools (`docs/plans/ucp-tools-list.json`) |
+| `https://{shop}.myshopify.com/password`    | Accepts a form POST of the password; responds `Set-Cookie: storefront_digest=…`                                                                     | —                                               |
 
 > The 302→`/password` behavior is PROBED (impl-notes probe 1). The cookie-shim recovery path is the **documented workaround this plan introduces**; the exact `Set-Cookie` name (`storefront_digest`) and the POST body field name must be **confirmed by a live probe before coding** (AL-UCP-2, AL-UCP-3). **Whether the cookie actually clears the 302 on `/api/ucp/mcp` is the make-or-break question — AL-UCP-3 now carries a concrete written fallback if it does not.**
 
@@ -176,7 +176,7 @@ The existing `ChatAssistant.jsx` and `AssistantProductCard.jsx` UI is preserved.
 
 - Product cards still render `<img loading="lazy">` (MCP media has no `width`/`height`) + `<Money>` + an "Add to cart" button, and `<Analytics.ProductView>` with a `{products:[ProductPayload]}` payload when a variant id is present.
 - The empty-vs-error state distinction is preserved verbatim (a zero-result search is NOT an error).
-- **Checkout-URL sourcing biases toward the cart `continue_url`.** The UCP guidance (Dev MCP: *"Sharing a cart link with the buyer → Cart MCP (`continue_url`)"* and the response-field guidance *"Cart … keep `continue_url`"*) is that the cart response itself exposes a `continue_url` usable for handoff. The `"add"` intent MUST prefer that cart `continue_url` when present, and only call `create_checkout` as a **fallback** when it is absent. This drops a tool call per add (lower Anonymous-tier rate-limit pressure, §7) and makes AL-UCP-7 (`cart_id`-vs-`line_items`) moot for the common path. Confirm the cart `continue_url` shape by probe (AL-UCP-6, OQ-U1).
+- **Checkout-URL sourcing biases toward the cart `continue_url`.** The UCP guidance (Dev MCP: _"Sharing a cart link with the buyer → Cart MCP (`continue_url`)"_ and the response-field guidance _"Cart … keep `continue_url`"_) is that the cart response itself exposes a `continue_url` usable for handoff. The `"add"` intent MUST prefer that cart `continue_url` when present, and only call `create_checkout` as a **fallback** when it is absent. This drops a tool call per add (lower Anonymous-tier rate-limit pressure, §7) and makes AL-UCP-7 (`cart_id`-vs-`line_items`) moot for the common path. Confirm the cart `continue_url` shape by probe (AL-UCP-6, OQ-U1).
 - The dual-cart caveat copy ("assistant cart, separate from the site cart") stays.
 - The `"detail"` intent's product-detail panel is removed with the intent (§9.1 step 7a); `ChatAssistant.jsx`'s `message.productDetail` branch becomes permanently unreached but harmless (§6.7a).
 
@@ -196,7 +196,7 @@ The existing `ChatAssistant.jsx` and `AssistantProductCard.jsx` UI is preserved.
   - Inject `meta.ucp-agent.profile` into every tool's `arguments` (Component Contract, §5.1). Read the profile URL from a new env var / const (§5.2).
   - Call `ensureStorefrontDigest()` and attach `Cookie: storefront_digest=…` on every request (dev shim). Handle a 302→`/password` response by invalidating the cached cookie and retrying once.
   - Migrate `callTool` response parsing from `JSON.parse(result.content[0].text)` + `result.isError` to **`result.structuredContent`** (§6.2), plus JSON-RPC `error` handling (protocol errors, code `-32000`/`-32001`).
-  - **Rate-limit coverage (change #5):** the current `callTool` throws on `res.status === 429` at line 88 *before* parsing the body. UCP surfaces rate-limiting as a JSON-RPC `-32000` protocol error in a **200 body** while ALSO honoring the HTTP `Retry-After` header (Dev MCP, §6.5). The migrated `callTool` MUST (a) keep the HTTP-429 branch and read `Retry-After` there, AND (b) after parsing, detect a `data.error.code === -32000` body, read the HTTP `Retry-After` header (if present) in that path too, and map both to `McpError('rate_limited', {retryAfterMs})`. Do not let the `-32000` body path bypass the rate-limit mapping.
+  - **Rate-limit coverage (change #5):** the current `callTool` throws on `res.status === 429` at line 88 _before_ parsing the body. UCP surfaces rate-limiting as a JSON-RPC `-32000` protocol error in a **200 body** while ALSO honoring the HTTP `Retry-After` header (Dev MCP, §6.5). The migrated `callTool` MUST (a) keep the HTTP-429 branch and read `Retry-After` there, AND (b) after parsing, detect a `data.error.code === -32000` body, read the HTTP `Retry-After` header (if present) in that path too, and map both to `McpError('rate_limited', {retryAfterMs})`. Do not let the `-32000` body path bypass the rate-limit mapping.
   - Replace `getProductDetails`/`getCart` (standard-tool exports) with the Phase-1 UCP exports: `searchCatalog`, `createCart`, `updateCart`, `createCheckout`. Keep `McpError` and the injectable `fetchImpl`. **Delete `getProductDetails`** (its only caller was the removed `"detail"` intent — §9.1 step 7a).
 - `app/lib/mcp-normalize.js` — re-map to the UCP response shapes (§6.3): product `id` is a UCP product id (`gid://shopify/p/…`) per docs; prices are **integer minor units** across catalog, cart, and checkout (UCP is uniform minor-units — this **removes** the two-path divergence the `/api/mcp` code had to handle). **`normalizeCart` (currently `mcp-normalize.js:296`) reads `rawCart.cost?.total_amount`, which WILL break against UCP** — rewrite it to read the UCP `totals[]` array (§6.5, change #7). Add `normalizeCheckout` for the `continue_url`. **Delete `normalizeProductDetail` and `normalizeProductDetailsMoney`** — they become dead code once the `"detail"` intent is removed (§6.7a, §9.1 step 7a). Keep the pure-function discipline.
 - `app/routes/($locale).api.assistant.jsx` — update the `"add"` intent to call `createCart` (no `cartId`) or `updateCart` (existing `cartId`, full line-item replace) then obtain the handoff URL (prefer the cart `continue_url`, else `createCheckout`, §3.5); update the stale-cart recovery to the UCP error shape; keep the empty-vs-error discipline and the locale guard verbatim. **Remove the `"detail"` intent (lines ~109–124) AND its imports of `getProductDetails` / `normalizeProductDetail` (lines ~6–14)** — cleanly, not commented out (§9.1 step 7a, Anti-Stubbing). Add a config/auth error path when the shim cannot mint the cookie.
@@ -236,7 +236,7 @@ Every `/api/ucp/mcp` request body is JSON-RPC 2.0 `tools/call`:
   "params": {
     "name": "<tool>",
     "arguments": {
-      "meta": { "ucp-agent": { "profile": "<PROFILE_URL>" } },
+      "meta": {"ucp-agent": {"profile": "<PROFILE_URL>"}}
       // ... tool-specific fields
     }
   }
@@ -247,12 +247,12 @@ Every `/api/ucp/mcp` request body is JSON-RPC 2.0 `tools/call`:
 
 Verified per-tool against `docs/plans/ucp-tools-list.json` (`inputSchema.required` includes `"meta"`, and `meta` requires `"ucp-agent"`, and `ucp-agent` requires `"profile"`):
 
-| Tool | `required` (top level) | `meta.required` | `meta.ucp-agent.required` | `meta.idempotency-key`? |
-| :-- | :-- | :-- | :-- | :-- |
-| `search_catalog` | `["meta","catalog"]` | `["ucp-agent"]` | `["profile"]` | not present |
-| `create_cart` | `["meta","cart"]` | `["ucp-agent"]` | `["profile"]` | not present |
-| `update_cart` | `["meta","cart","id"]` | `["ucp-agent"]` | `["profile"]` | not present |
-| `create_checkout` | `["meta","checkout"]` | `["ucp-agent"]` | `["profile"]` | not present |
+| Tool              | `required` (top level) | `meta.required` | `meta.ucp-agent.required` | `meta.idempotency-key`? |
+| :---------------- | :--------------------- | :-------------- | :------------------------ | :---------------------- |
+| `search_catalog`  | `["meta","catalog"]`   | `["ucp-agent"]` | `["profile"]`             | not present             |
+| `create_cart`     | `["meta","cart"]`      | `["ucp-agent"]` | `["profile"]`             | not present             |
+| `update_cart`     | `["meta","cart","id"]` | `["ucp-agent"]` | `["profile"]`             | not present             |
+| `create_checkout` | `["meta","checkout"]`  | `["ucp-agent"]` | `["profile"]`             | not present             |
 
 So for **all four Phase-1 tools**, the injected contract is exactly `meta.ucp-agent.profile = <PROFILE_URL>`. No idempotency key is required by any Phase-1 tool's schema.
 
@@ -262,10 +262,10 @@ So for **all four Phase-1 tools**, the injected contract is exactly `meta.ucp-ag
 
 Two configuration values are needed. Both are **operator-managed** (`.env.local`); the Coder does NOT edit env files. The dev-only password var is resolved via the **§9.0 pre-implementation gate** (change #1) before implementation starts.
 
-| Value | Where | Purpose | Notes |
-| :-- | :-- | :-- | :-- |
-| Storefront password | `.env.local` (new **dev-only** var, e.g. `DEV_STOREFRONT_PASSWORD`) | Feeds the cookie shim. | DEV-ONLY. Referenced by pointer only; the literal value lives in `docs/dev-fixtures.md` (uncommitted) and MUST NOT be copied into this committed plan. Absence disables the shim. **Operator adds this before the Coder is dispatched (§9.0).** |
-| UCP agent profile URL | `app/lib/const.js` constant (or env var) | `meta.ucp-agent.profile`. | The Phase-1 dev fixture URL is public and non-secret, so a `const` is acceptable; a `PUBLIC_UCP_AGENT_PROFILE_URL` env var is the Phase-2-ready alternative. |
+| Value                 | Where                                                               | Purpose                   | Notes                                                                                                                                                                                                                                           |
+| :-------------------- | :------------------------------------------------------------------ | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storefront password   | `.env.local` (new **dev-only** var, e.g. `DEV_STOREFRONT_PASSWORD`) | Feeds the cookie shim.    | DEV-ONLY. Referenced by pointer only; the literal value lives in `docs/dev-fixtures.md` (uncommitted) and MUST NOT be copied into this committed plan. Absence disables the shim. **Operator adds this before the Coder is dispatched (§9.0).** |
+| UCP agent profile URL | `app/lib/const.js` constant (or env var)                            | `meta.ucp-agent.profile`. | The Phase-1 dev fixture URL is public and non-secret, so a `const` is acceptable; a `PUBLIC_UCP_AGENT_PROFILE_URL` env var is the Phase-2-ready alternative.                                                                                    |
 
 `PUBLIC_STORE_DOMAIN` is reused to build the endpoint (already present).
 
@@ -280,9 +280,9 @@ Two configuration values are needed. Both are **operator-managed** (`.env.local`
 
 Even though Phase 1 wires none of these, the contract is recorded so it is not lost. **Re-verified against the Shopify Dev MCP (Cart MCP + Checkout MCP docs, 2026-04) during this revision.** The finding is stronger than the previous revision stated: the **docs require `meta["idempotency-key"]` on all three of** `complete_checkout`, `cancel_checkout`, and `cancel_cart`, while the captured `ucp-tools-list.json` schema lists only `ucp-agent` as required for the two cancel tools. This is a docs-vs-schema discrepancy on the cancel tools (AL-UCP-8).
 
-- **`complete_checkout` (Phase 2):** BOTH `ucp-tools-list.json` schema AND the Dev MCP Checkout MCP docs REQUIRE `meta.idempotency-key` (a UUID string) **in addition to** `meta.ucp-agent.profile`. No discrepancy. Dev MCP: *"complete_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."* Use a unique UUID per completion attempt; reuse the same key on retries of the *same* logical completion so the payment lifecycle is retry-safe (Dev MCP: *"Don't retry inside the same checkout or payment lifecycle without an idempotency-key."*).
-- **`cancel_checkout` (Phase 2):** **The Dev MCP Checkout MCP docs REQUIRE `meta.idempotency-key`** — *"cancel_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."* This corrects the previous revision, which wrongly stated only `complete_checkout` needed the key among checkout tools. However the captured `ucp-tools-list.json` schema for `cancel_checkout` lists only `ucp-agent` as required. **Docs-vs-schema discrepancy → AL-UCP-8; resolve by probe before wiring in Phase 2, but treat the docs (key required) as the safe default.**
-- **`cancel_cart` (Phase 2):** **The Dev MCP Cart MCP docs REQUIRE `meta.idempotency-key`** — *"cancel_cart … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."* The captured `ucp-tools-list.json` schema lists only `ucp-agent`. Same docs-vs-schema discrepancy → AL-UCP-8. Reuse the same key when retrying a cancel so the server returns the same outcome without cancelling twice (Dev MCP).
+- **`complete_checkout` (Phase 2):** BOTH `ucp-tools-list.json` schema AND the Dev MCP Checkout MCP docs REQUIRE `meta.idempotency-key` (a UUID string) **in addition to** `meta.ucp-agent.profile`. No discrepancy. Dev MCP: _"complete_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."_ Use a unique UUID per completion attempt; reuse the same key on retries of the _same_ logical completion so the payment lifecycle is retry-safe (Dev MCP: _"Don't retry inside the same checkout or payment lifecycle without an idempotency-key."_).
+- **`cancel_checkout` (Phase 2):** **The Dev MCP Checkout MCP docs REQUIRE `meta.idempotency-key`** — _"cancel_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."_ This corrects the previous revision, which wrongly stated only `complete_checkout` needed the key among checkout tools. However the captured `ucp-tools-list.json` schema for `cancel_checkout` lists only `ucp-agent` as required. **Docs-vs-schema discrepancy → AL-UCP-8; resolve by probe before wiring in Phase 2, but treat the docs (key required) as the safe default.**
+- **`cancel_cart` (Phase 2):** **The Dev MCP Cart MCP docs REQUIRE `meta.idempotency-key`** — _"cancel_cart … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."_ The captured `ucp-tools-list.json` schema lists only `ucp-agent`. Same docs-vs-schema discrepancy → AL-UCP-8. Reuse the same key when retrying a cancel so the server returns the same outcome without cancelling twice (Dev MCP).
 
 **Net:** all three completion/cancel tools have docs that require the idempotency-key; the schema capture under-specifies the two cancel tools. When Phase 2 wires any of them, send the key (matching the docs), and probe to confirm the server enforces it. Do not let the previous understatement propagate into a Phase-2 plan the way the `Analytics.ItemView` error propagated last time.
 
@@ -299,9 +299,9 @@ Even though Phase 1 wires none of these, the contract is recorded so it is not l
 
 The `/api/mcp` envelope was `JSON.parse(result.content[0].text)` + boolean `result.isError`. The **UCP envelope is different**:
 
-- **Success (business outcome):** `result.structuredContent` carries the typed payload (e.g. `structuredContent.products` for catalog, `structuredContent.cart` for cart tools). `result.content[]` may ALSO be present as a text representation — but `structuredContent` is authoritative. (Dev MCP: *"The cart is returned in `result.structuredContent`. The `result.content` array may also be present with a text representation of the cart."*)
-- **Protocol error (transport failure — auth, rate limit, unavailability):** JSON-RPC top-level `error` object with code `-32000` (or `-32001` for discovery errors). Map to `McpError`. (Dev MCP: *"Transport-level failures … are returned as JSON-RPC error with code -32000, or -32001 for discovery errors."*)
-- **Business-outcome errors** (application-level, e.g. expired cart, unavailable merchandise) come back as a *successful* `result` with a `messages[]` array (info/warning/error). The action must inspect `structuredContent.cart.messages[]` for `error`-type entries rather than relying on a boolean `isError` flag.
+- **Success (business outcome):** `result.structuredContent` carries the typed payload (e.g. `structuredContent.products` for catalog, `structuredContent.cart` for cart tools). `result.content[]` may ALSO be present as a text representation — but `structuredContent` is authoritative. (Dev MCP: _"The cart is returned in `result.structuredContent`. The `result.content` array may also be present with a text representation of the cart."_)
+- **Protocol error (transport failure — auth, rate limit, unavailability):** JSON-RPC top-level `error` object with code `-32000` (or `-32001` for discovery errors). Map to `McpError`. (Dev MCP: _"Transport-level failures … are returned as JSON-RPC error with code -32000, or -32001 for discovery errors."_)
+- **Business-outcome errors** (application-level, e.g. expired cart, unavailable merchandise) come back as a _successful_ `result` with a `messages[]` array (info/warning/error). The action must inspect `structuredContent.cart.messages[]` for `error`-type entries rather than relying on a boolean `isError` flag.
 
 `callTool` change: parse `data.result.structuredContent`; if absent, fall back to parsing `data.result.content[0].text` defensively (belt-and-suspenders during migration) but treat `structuredContent` as primary. Handle `data.error` (JSON-RPC) → `McpError('rpc_error' | 'rate_limited', …)`. This is **AL-UCP-1**, flagged low-confidence: the exact live shape must be confirmed by a probe before finalizing the parser, because the retired plan's ancestor assumed `structuredContent` and was proven wrong for `/api/mcp` — we must not repeat that mistake in the opposite direction for `/api/ucp/mcp`.
 
@@ -310,27 +310,38 @@ The `/api/mcp` envelope was `JSON.parse(result.content[0].text)` + boolean `resu
 The `AssistantProduct` / `AssistantCart` shapes the components consume stay the same:
 
 ```ts
-AssistantProduct = { id, title, vendor, descriptionHtml?, priceRange:{min:Money,max:Money}, image?:{url,altText}, firstVariantId?, firstVariantTitle, available }
-Money           = { amount: string /* decimal, major units */, currencyCode: string }
-AssistantCart   = { id, totalAmount: Money, lineCount, checkoutUrl? }
+AssistantProduct = {
+  id,
+  title,
+  vendor,
+  descriptionHtml,
+  priceRange: {min: Money, max: Money},
+  image: {url, altText},
+  firstVariantId,
+  firstVariantTitle,
+  available,
+};
+Money = {amount: string /* decimal, major units */, currencyCode: string};
+AssistantCart = {id, totalAmount: Money, lineCount, checkoutUrl};
 ```
 
 What changes is the **mapping** from UCP raw shapes to this model (§6.5).
 
 ### 6.4 Cart semantics — full-replace (behavior change)
 
-UCP `update_cart` is **full-replace**: *"Replace the cart's contents"* / *"cart update is full-replace: always carry forward the entire line_items array"* (Dev MCP). This differs from the standard `/api/mcp` `update_cart`, which used incremental `add_items`. Consequence for the action's `"add"` intent: to add an item to an existing cart, the action must **send the full desired line-item set** (existing lines + the new one), not just the delta. Phase 1 keeps the assistant cart simple (typically one item at a time), but the Coder MUST carry forward existing lines when the cart already has contents, or items will be silently dropped. Logged as a design risk (§7).
+UCP `update_cart` is **full-replace**: _"Replace the cart's contents"_ / _"cart update is full-replace: always carry forward the entire line_items array"_ (Dev MCP). This differs from the standard `/api/mcp` `update_cart`, which used incremental `add_items`. Consequence for the action's `"add"` intent: to add an item to an existing cart, the action must **send the full desired line-item set** (existing lines + the new one), not just the delta. Phase 1 keeps the assistant cart simple (typically one item at a time), but the Coder MUST carry forward existing lines when the cart already has contents, or items will be silently dropped. Logged as a design risk (§7).
 
 ### 6.5 Money mapping + cart `totals[]` — simplification and required rewrite (changes #5 and #7)
 
-**Money (simplification).** UCP uses **integer minor currency units uniformly** across catalog, cart, and checkout (Dev MCP: *"Minor currency units apply to every amount in the response … `15000` = $150.00"*; catalog `price_range.min = {amount: 8900, currency: "USD"}`). This **removes** the two-path divergence the `/api/mcp` normalizer needed (catalog integer vs detail/cart decimal-string). The migrated normalizer applies `minorUnitsToDecimalString(amount, currencyCode)` on ALL price paths and renames `currency` → `currencyCode` everywhere. Keep the zero-decimal-currency guard (dev store is USD).
+**Money (simplification).** UCP uses **integer minor currency units uniformly** across catalog, cart, and checkout (Dev MCP: _"Minor currency units apply to every amount in the response … `15000` = $150.00"_; catalog `price_range.min = {amount: 8900, currency: "USD"}`). This **removes** the two-path divergence the `/api/mcp` normalizer needed (catalog integer vs detail/cart decimal-string). The migrated normalizer applies `minorUnitsToDecimalString(amount, currencyCode)` on ALL price paths and renames `currency` → `currencyCode` everywhere. Keep the zero-decimal-currency guard (dev store is USD).
 
-**Cart total shape — REQUIRED rewrite (change #7).** The current `normalizeCart` (`app/lib/mcp-normalize.js:296`) reads `rawCart.cost?.total_amount`. The Dev MCP is explicit that **UCP has no `cost` field**: *"Cart/checkout pricing lives in `result.totals[]`; there is no `result.cost` field."* Left as-is, `normalizeCart` would read `undefined` and render $0.00. The Coder MUST rewrite `normalizeCart` to:
-  1. Read `rawCart.totals` (an array of `{type, amount, display_text}` entries, minor units, per the UCP printer contract).
-  2. Select the `type === "total"` entry for `AssistantCart.totalAmount` (convert via `minorUnitsToDecimalString`, pair with `rawCart.currency`).
-  3. If no `type === "total"` entry exists, fall back to a safe `{amount: '0.00', currencyCode}` (Anti-Stubbing: this is a genuine "no total available" state, not fabricated data).
-  4. Do NOT reorder/recompute the `totals[]` array; if a future revision surfaces a breakdown, render entries order-preserving using `display_text` (UCP printer contract). Phase 1 only needs the single `total`.
-Confirm the exact cart total shape and the `type` value by probe (**AL-UCP-5**) before finalizing.
+**Cart total shape — REQUIRED rewrite (change #7).** The current `normalizeCart` (`app/lib/mcp-normalize.js:296`) reads `rawCart.cost?.total_amount`. The Dev MCP is explicit that **UCP has no `cost` field**: _"Cart/checkout pricing lives in `result.totals[]`; there is no `result.cost` field."_ Left as-is, `normalizeCart` would read `undefined` and render $0.00. The Coder MUST rewrite `normalizeCart` to:
+
+1. Read `rawCart.totals` (an array of `{type, amount, display_text}` entries, minor units, per the UCP printer contract).
+2. Select the `type === "total"` entry for `AssistantCart.totalAmount` (convert via `minorUnitsToDecimalString`, pair with `rawCart.currency`).
+3. If no `type === "total"` entry exists, fall back to a safe `{amount: '0.00', currencyCode}` (Anti-Stubbing: this is a genuine "no total available" state, not fabricated data).
+4. Do NOT reorder/recompute the `totals[]` array; if a future revision surfaces a breakdown, render entries order-preserving using `display_text` (UCP printer contract). Phase 1 only needs the single `total`.
+   Confirm the exact cart total shape and the `type` value by probe (**AL-UCP-5**) before finalizing.
 
 **Rate-limit interaction (change #5, cross-ref §6.2 / AL-UCP-13).** Rate-limiting can arrive either as an HTTP 429 (with `Retry-After`) OR as a JSON-RPC `-32000` protocol error in a 200 body (also honoring `Retry-After`). The normalizer is not where this is handled — it is handled in `callTool` (§6.2, AL-UCP-13). Called out here because the money/total rewrite and the rate-limit branch are edited in the same migration pass and must not be conflated.
 
@@ -345,6 +356,7 @@ MCP media provides `url` + `alt_text`, no `width`/`height`. Keep the existing `<
 ### 6.7a `"detail"` intent removal — normalizer dead code (change #4)
 
 Removing the route's `"detail"` intent (§9.1 step 7a) makes three symbols dead:
+
 - `mcp.server.js`: `getProductDetails` — **delete** (only caller was the `"detail"` intent).
 - `mcp-normalize.js`: `normalizeProductDetail` and `normalizeProductDetailsMoney` — **delete** (only callers were `getProductDetails` / the `"detail"` intent).
 - `ChatAssistant.jsx`: the `message.productDetail` branch becomes permanently unreached but harmless; leaving it is acceptable for this migration (reviewer confirmed harmless). No stub or empty-value placeholder is introduced — the intent and its wiring are **removed cleanly**, satisfying the Anti-Stubbing Rule (removing a feature is fine; commenting it out to dodge a TypeError is not). UCP's product-detail equivalent is `get_product`, a Phase-2 candidate (§11); if in-chat detail is later wanted, it is re-introduced against `get_product`, not resurrected against the deprecated `/api/mcp`.
@@ -408,7 +420,7 @@ Confidence is the Architect's estimate that the stated resolution is correct as-
 - **Prerequisite:** This probe depends on the operator-supplied password (OQ-U2). It is gated behind the **§9.0 pre-implementation gate**; the operator resolves OQ-U2 before the Coder runs this probe.
 - **Resolve by:** Live probe: mint the cookie, then `tools/list` on `/api/ucp/mcp` with the cookie; expect 200. **This is the make-or-break probe — run it first (§9.1 step 1a).**
 - **Written fallback if the probe does NOT return 200 (the STOP condition):** the Coder STOPS all implementation and hands back to the operator with the probe evidence. The operator then chooses ONE of:
-  - **(a) Unblock the endpoint at the platform level** — remove the storefront password (only possible on a paid tier) OR configure a `/api/ucp/*` path exception on the dev store so the UCP endpoint is reachable without the password. This is the operator's known unblock per the memory note `dev-store-password-blocks-ucp-mcp` (*"until the password is removed or a path exception is configured"*). Once unblocked, the Coder drops the cookie shim entirely (Anonymous-tier reach) and proceeds with the rest of the migration.
+  - **(a) Unblock the endpoint at the platform level** — remove the storefront password (only possible on a paid tier) OR configure a `/api/ucp/*` path exception on the dev store so the UCP endpoint is reachable without the password. This is the operator's known unblock per the memory note `dev-store-password-blocks-ucp-mcp` (_"until the password is removed or a path exception is configured"_). Once unblocked, the Coder drops the cookie shim entirely (Anonymous-tier reach) and proceeds with the rest of the migration.
   - **(b) Defer Phase 1 on this store** — if neither password removal nor a path exception is available, the migration is **deferred** until a paid-tier password removal or a signed-request (RFC 9421) path exists (§4.4). The response-envelope, normalizer, and Component-Contract work are NOT started against a store where the endpoint is unreachable, because they cannot be verified. The plan records the deferral decision in `docs/plans/ucp-migration-impl-notes.md`.
   - The decision point is explicit: `200` → proceed with the shim; `302` after a confirmed-correct cookie (AL-UCP-2 resolved) → operator picks (a) or (b); there is no "guess and keep coding" branch.
 
@@ -439,7 +451,7 @@ Confidence is the Architect's estimate that the stated resolution is correct as-
 
 ### AL-UCP-8 — Idempotency-key: schema vs docs discrepancy for cancel tools — CORRECTED (change #3)
 
-- **Unknown / discrepancy:** The captured `ucp-tools-list.json` schema requires only `ucp-agent` on `cancel_cart` and `cancel_checkout`, BUT the Dev MCP docs (re-verified this revision) explicitly REQUIRE `meta["idempotency-key"]` on BOTH: Cart MCP — *"cancel_cart … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`"*; Checkout MCP — *"cancel_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."* So the discrepancy is a **docs-require vs schema-optional** conflict on both cancel tools. `complete_checkout` requires the key in both schema and docs (no discrepancy).
+- **Unknown / discrepancy:** The captured `ucp-tools-list.json` schema requires only `ucp-agent` on `cancel_cart` and `cancel_checkout`, BUT the Dev MCP docs (re-verified this revision) explicitly REQUIRE `meta["idempotency-key"]` on BOTH: Cart MCP — _"cancel_cart … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`"_; Checkout MCP — _"cancel_checkout … Requires `meta[\"idempotency-key\"]` (UUID) in addition to `meta[\"ucp-agent\"]`."_ So the discrepancy is a **docs-require vs schema-optional** conflict on both cancel tools. `complete_checkout` requires the key in both schema and docs (no discrepancy).
 - **Why it matters:** Phase 2 correctness; a wrong assumption → cancel calls rejected (if the server enforces the docs) or non-idempotent retries. This corrects the previous revision's understatement that only `complete_checkout` needed the key among checkout tools.
 - **Resolve by:** Probe (Phase 2). Captured now so the contract isn't lost. **Safe default: send the idempotency-key on all three tools (matching the docs), reusing the same key on retries of the same logical cancel/complete.**
 
@@ -468,7 +480,7 @@ Confidence is the Architect's estimate that the stated resolution is correct as-
 
 ### AL-UCP-13 — 429 / `Retry-After` parity on UCP — EXPANDED (change #5)
 
-- **Confirmed (Dev MCP):** UCP surfaces rate-limiting as a JSON-RPC **`-32000` protocol error** (in a 200 body) while ALSO honoring the HTTP `Retry-After` header: *"When the server rate-limits your request, retry after the delay specified by the HTTP Retry-After response header … honor Retry-After and apply exponential backoff with jitter when the header is absent."* A pure HTTP-429 may also occur.
+- **Confirmed (Dev MCP):** UCP surfaces rate-limiting as a JSON-RPC **`-32000` protocol error** (in a 200 body) while ALSO honoring the HTTP `Retry-After` header: _"When the server rate-limits your request, retry after the delay specified by the HTTP Retry-After response header … honor Retry-After and apply exponential backoff with jitter when the header is absent."_ A pure HTTP-429 may also occur.
 - **Why it matters:** The current `callTool` throws on `res.status === 429` at `mcp.server.js:88` BEFORE parsing the body, so a `-32000`-in-a-200-body rate-limit would bypass that branch and be mis-mapped as a generic `rpc_error`. The existing 429 unit test alone does not cover the more-likely `-32000` path.
 - **Resolve by:** In `callTool`, read `Retry-After` in **BOTH** places — the HTTP-status-429 path AND the parsed `data.error.code === -32000` body path — and map both to `McpError('rate_limited', {retryAfterMs})`, reusing the existing seconds→ms conversion. Unit-test the `-32000`+`Retry-After` combination in addition to the existing HTTP-429 test (§10.4).
 

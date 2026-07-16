@@ -17,20 +17,25 @@
 ## Expected behavior
 
 Clicking the "Dawn" swatch navigates to:
+
 ```
 /products/the-complete-snowboard?Color=Dawn
 ```
+
 The page reloads with the Dawn variant selected (different price, images, and `variantId`).
 
 ## Actual behavior
 
 Clicking the "Dawn" swatch navigates to:
+
 ```
 /products/the-complete-snowboard/Color=Dawn
 ```
+
 The Remix router has no route matching this path-segment pattern, so the page returns HTTP 404. The variant never switches.
 
 Confirmed in dev server log during QA Round 2:
+
 ```
 GET 404 loader /products/the-complete-snowboard/Color=Dawn
 ```
@@ -44,6 +49,7 @@ Both the swatch `<Link to={variantUriQuery}>` (line 299) and the Listbox `<Link 
 The `getProductOptions` helper constructs `variantUriQuery` from the current URL and the option name/value pair. If it is receiving a path-based URL (e.g. the `request.url` on the server) or producing a relative path segment rather than a query string, the output would be `/products/<handle>/Color=Dawn` instead of `/products/<handle>?Color=Dawn`.
 
 Possible causes (to be confirmed by investigation):
+
 1. `getProductOptions` is being called with incorrect arguments — e.g. missing the `request` or `searchParams` needed to generate query-param-style URLs
 2. A version mismatch between the Hydrogen SDK's `getProductOptions` output format and what the route expects
 3. The `variantUriQuery` value coming from the GraphQL response itself (via the `optionValues { variantUriQuery }` field) is pre-rendered by the Storefront API in path-segment format rather than query-param format

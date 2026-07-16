@@ -3,11 +3,11 @@ import {useLoaderData} from '@remix-run/react';
 import {getSeoMeta, Image} from '@shopify/hydrogen';
 import invariant from 'tiny-invariant';
 
+import styles from '../styles/custom-font.css?url';
+
 import {PageHeader, Section} from '~/components/Text';
 import {seoPayload} from '~/lib/seo.server';
 import {routeHeaders} from '~/data/cache';
-
-import styles from '../styles/custom-font.css?url';
 
 const BLOG_HANDLE = 'journal';
 

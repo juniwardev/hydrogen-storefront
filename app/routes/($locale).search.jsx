@@ -8,6 +8,8 @@ import {
   getSeoMeta,
 } from '@shopify/hydrogen';
 
+import {getFeaturedData} from './($locale).featured-products';
+
 import {Heading, PageHeader, Section, Text} from '~/components/Text';
 import {Input} from '~/components/Input';
 import {Grid} from '~/components/Grid';
@@ -17,8 +19,6 @@ import {FeaturedCollections} from '~/components/FeaturedCollections';
 import {PRODUCT_CARD_FRAGMENT} from '~/data/fragments';
 import {getImageLoadingPriority, PAGINATION_SIZE} from '~/lib/const';
 import {seoPayload} from '~/lib/seo.server';
-
-import {getFeaturedData} from './($locale).featured-products';
 
 /**
  * @param {LoaderFunctionArgs}

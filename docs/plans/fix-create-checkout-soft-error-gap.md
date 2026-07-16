@@ -44,33 +44,35 @@ Per the investigation (`docs/bugs/create-checkout-soft-error-gap-investigation.m
 ### 4.1 `app/lib/mcp.server.js` — `createCheckout()` return (`~519–522`)
 
 **Before:**
+
 ```js
-  const payload = await callTool(callOpts);
-  // Success: checkout fields are FLAT at structuredContent (id, status,
-  // messages, continue_url, totals[], line_items[]) — the same flat shape as
-  // the cart tools (create_cart / update_cart) and search_catalog. There is no
-  // .checkout wrapper to unwrap.
-  return {
-    checkout: payload ?? null,
-    messages: payload?.messages ?? [],
-  };
+const payload = await callTool(callOpts);
+// Success: checkout fields are FLAT at structuredContent (id, status,
+// messages, continue_url, totals[], line_items[]) — the same flat shape as
+// the cart tools (create_cart / update_cart) and search_catalog. There is no
+// .checkout wrapper to unwrap.
+return {
+  checkout: payload ?? null,
+  messages: payload?.messages ?? [],
+};
 ```
 
 **After:**
+
 ```js
-  const payload = await callTool(callOpts);
-  // Success: checkout fields are FLAT at structuredContent (id, status,
-  // messages, continue_url, totals[], line_items[]) — the same flat shape as
-  // the cart tools (create_cart / update_cart) and search_catalog. There is no
-  // .checkout wrapper to unwrap. Guard on the checkout's identifying `id` so a
-  // NON-thrown soft business-outcome payload (isError:false with error
-  // messages[] and no checkout fields — top-level keys continue_url/messages/
-  // ucp, no id, PROBED live) yields checkout:null instead of a junk checkout,
-  // mirroring createCart/updateCart's identity guard.
-  return {
-    checkout: payload?.id ? payload : null,
-    messages: payload?.messages ?? [],
-  };
+const payload = await callTool(callOpts);
+// Success: checkout fields are FLAT at structuredContent (id, status,
+// messages, continue_url, totals[], line_items[]) — the same flat shape as
+// the cart tools (create_cart / update_cart) and search_catalog. There is no
+// .checkout wrapper to unwrap. Guard on the checkout's identifying `id` so a
+// NON-thrown soft business-outcome payload (isError:false with error
+// messages[] and no checkout fields — top-level keys continue_url/messages/
+// ucp, no id, PROBED live) yields checkout:null instead of a junk checkout,
+// mirroring createCart/updateCart's identity guard.
+return {
+  checkout: payload?.id ? payload : null,
+  messages: payload?.messages ?? [],
+};
 ```
 
 **Justification of the discriminator (`id`):** the investigation's live capture shows a real checkout always carries top-level `id`; the soft-error envelope's top-level keys are exactly `["continue_url", "messages", "ucp"]` with no `id`. `normalizeCheckout()` itself depends on `rawCheckout.id` (`mcp-normalize.js:240`), so `id` is the load-bearing identity field — the correct thing to guard on.
@@ -92,9 +94,9 @@ The pre-fix inline comment (`:515–518`) is **accurate** about the flat shape a
 
 ## 5. Affected files and modules
 
-| File | Change |
-| --- | --- |
-| `app/lib/mcp.server.js` | One-line guard change + augmented inline comment in `createCheckout()` (§4.1). |
+| File                         | Change                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `app/lib/mcp.server.js`      | One-line guard change + augmented inline comment in `createCheckout()` (§4.1).                                   |
 | `app/lib/mcp.server.test.js` | Add `createCheckout` to the existing import (`:28`); append a new `describe` block with the checkout cases (§7). |
 
 No other files change. Explicitly **not** touched: `($locale).api.assistant.jsx`, `mcp-normalize.js`, `createCart`/`updateCart`.
@@ -112,7 +114,13 @@ None. No GraphQL fragments/queries change, so **no codegen regeneration is trigg
 Add a new `describe` block to the **existing** `app/lib/mcp.server.test.js` (do not create a new file — the harness `plainFetch`, `withPasswordShim`, `BASE_OPTS`, `UCP_AUTH_MODES`, and `__resetForTests()` already live there). Add `createCheckout` to the existing import on line 28:
 
 ```js
-import {callTool, createCart, updateCart, createCheckout, McpError} from './mcp.server.js';
+import {
+  callTool,
+  createCart,
+  updateCart,
+  createCheckout,
+  McpError,
+} from './mcp.server.js';
 ```
 
 The existing `successFetch()` helper is scoped **inside** the cart `describe` block (`:742–754`) and is not visible to a new block. Mirror the cart block by defining a local `successFetch` (or reuse `plainFetch` directly) inside the new checkout block. Each mocked response wraps a fixture as `{jsonrpc:'2.0', id:1, result:{structuredContent: <fixture>, isError:false}}` with 200 + `Content-Type: application/json`, served via `plainFetch` with `authMode: UCP_AUTH_MODES.NONE` and `password: undefined` (matching the cart cases at `:756–826`). Call `__resetForTests()` at the top of each test.
@@ -126,8 +134,7 @@ const FLAT_CHECKOUT_PAYLOAD = {
   status: 'open',
   line_items: [{id: 'gid://shopify/CheckoutLine/1', quantity: 1}],
   totals: [{type: 'total', amount: 72995, display_text: 'Total'}],
-  continue_url:
-    'https://ashford-quantum.myshopify.com/checkout/c/hWNEWo17abc',
+  continue_url: 'https://ashford-quantum.myshopify.com/checkout/c/hWNEWo17abc',
   messages: [],
 };
 
@@ -150,10 +157,10 @@ const SOFT_ERROR_CHECKOUT_PAYLOAD = {
 
 Required cases (mirroring the cart fix's 2-case pattern):
 
-| # | Fixture (isError) | Assertion | Current code | After fix |
-| - | ----------------- | --------- | ------------ | --------- |
-| 1 | `FLAT_CHECKOUT_PAYLOAD` (false) | `result.checkout` non-null; `result.checkout.id === FLAT_CHECKOUT_PAYLOAD.id`; `result.checkout.continue_url` present; `result.messages` deep-equals `[]` | **PASSES** (already flat) | PASSES |
-| 2 | `SOFT_ERROR_CHECKOUT_PAYLOAD` (false) | `result.checkout === null`; `result.messages` deep-equals the error `messages[]` | **FAILS** (`payload ?? null` returns the truthy envelope) — **pins the bug** | **PASSES** |
+| #   | Fixture (isError)                     | Assertion                                                                                                                                                 | Current code                                                                 | After fix  |
+| --- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------- |
+| 1   | `FLAT_CHECKOUT_PAYLOAD` (false)       | `result.checkout` non-null; `result.checkout.id === FLAT_CHECKOUT_PAYLOAD.id`; `result.checkout.continue_url` present; `result.messages` deep-equals `[]` | **PASSES** (already flat)                                                    | PASSES     |
+| 2   | `SOFT_ERROR_CHECKOUT_PAYLOAD` (false) | `result.checkout === null`; `result.messages` deep-equals the error `messages[]`                                                                          | **FAILS** (`payload ?? null` returns the truthy envelope) — **pins the bug** | **PASSES** |
 
 **Which case pins the bug:** because checkout was already flat, **case 1 (success) passes even pre-fix** — it is a regression/contract guard, not the pin. **Case 2 is the bug-pinning case:** against the current `checkout: payload ?? null` it returns the soft-error envelope as a truthy object (so `assert.equal(result.checkout, null)` **fails**); after the `payload?.id ? payload : null` guard it returns `null` (**passes**). The Coder must run `npm run test:unit` **before** applying §4.1 to confirm case 2 genuinely fails, then apply the fix and confirm all green — this is the fails-before / passes-after proof.
 

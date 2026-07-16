@@ -13,11 +13,13 @@
 **Empirical proof (live probe of ashford-quantum.myshopify.com, 2026-07-15):**
 
 1. **Real checkout success shape** (valid variant GID, delivery address issue present):
+
    - `result.isError: true` (the business-outcome error is flagged)
    - This throws a `tool_error` exception, never reaching `createCheckout`'s return path
    - But the payload DOES carry `id: "gid://shopify/Checkout/hWNEWo17..."` at the top level
 
 2. **Soft-error envelope shape** (invalid variant GID):
+
    - `result.isError: true` (again throws `tool_error`)
    - Payload has NO `id` field; only `continue_url: "https://ashford-quantum.myshopify.com/"` and `messages[]` with error details
    - Top-level keys: `["continue_url", "messages", "ucp"]` — NO `id`
@@ -28,9 +30,10 @@
    - `createCheckout` has ZERO test coverage (no tests for success, soft-error, or thrown paths)
 
 **Root-cause location:** `app/lib/mcp.server.js`, lines 519–522:
+
 ```javascript
 return {
-  checkout: payload ?? null,  // ← Should be: checkout: payload?.id ? payload : null,
+  checkout: payload ?? null, // ← Should be: checkout: payload?.id ? payload : null,
   messages: payload?.messages ?? [],
 };
 ```
@@ -46,6 +49,7 @@ return {
 2. **When a soft-error occurs (isError: false but error messages):** The payload is a sparse envelope with only `messages[]` and a fallback `continue_url` (typically pointing to root), but **no `id` field**. The bare `?? null` guard treats this as truthy and returns it. `normalizeCheckout()` at route line 190 receives `{messages: [...], continue_url: "..."}` and normalizes it to `{id: undefined, checkoutUrl: <fallback>}`.
 
 3. **Route consumption chain:** At route lines 189–195:
+
    ```javascript
    const checkout = checkoutResult.checkout
      ? normalizeCheckout(checkoutResult.checkout)
@@ -56,6 +60,7 @@ return {
      cart: {...cart, checkoutUrl: checkout?.checkoutUrl},
    });
    ```
+
    Since the soft-error envelope is truthy (it's an object), `normalizeCheckout()` is called. It produces `checkout.checkoutUrl = <fallback>` (the root URL). The client receives a "checkout" that is just the home page, not a real checkout.
 
 4. **Why `isError: true` doesn't trigger here:** Live probes showed all error cases (invalid variant, empty items, etc.) return `isError: true`, which triggers `callTool()`'s `tool_error` exception (line 271 of `mcp.server.js`). This exception is caught by the route's outer try-catch and surfaces properly. The latent risk is IF a soft-error case exists with `isError: false` — then it bypasses the exception path and flows through as corrupt data.
@@ -69,6 +74,7 @@ return {
 **Request:** (omitted for brevity; see docs/bugs/create-checkout-soft-error-gap.md for full details)
 
 **Response `result.structuredContent` top-level keys:**
+
 ```
 [ 'continue_url', 'messages', 'ucp' ]
 ```
@@ -76,6 +82,7 @@ return {
 **Critical observation:** NO `id` field present.
 
 **Response excerpt:**
+
 ```json
 {
   "continue_url": "https://ashford-quantum.myshopify.com/",
@@ -87,7 +94,9 @@ return {
       "severity": "unrecoverable"
     }
   ],
-  "ucp": { /* large metadata */ }
+  "ucp": {
+    /* large metadata */
+  }
 }
 ```
 
@@ -96,12 +105,11 @@ return {
 ### Test fixture: `SOFT_ERROR_PAYLOAD` in mcp.server.test.js
 
 From `app/lib/mcp.server.test.js`, lines ~165–170:
+
 ```javascript
 const SOFT_ERROR_PAYLOAD = {
   ucp: {status: 'error'},
-  messages: [
-    {type: 'error', code: 'some_soft_error', content: 'soft failure'},
-  ],
+  messages: [{type: 'error', code: 'some_soft_error', content: 'soft failure'}],
 };
 ```
 
@@ -110,11 +118,13 @@ const SOFT_ERROR_PAYLOAD = {
 ### Code comparison: Cart vs Checkout
 
 **updateCart (correctly guarded):** `app/lib/mcp.server.js`, line 451:
+
 ```javascript
 cart: payload?.id ? payload : null,
 ```
 
 **createCheckout (vulnerable):** `app/lib/mcp.server.js`, line 520:
+
 ```javascript
 checkout: payload ?? null,
 ```
@@ -124,6 +134,7 @@ The cart functions use `payload?.id` as the discriminator; checkout does not.
 ### Route null-handling for checkout
 
 `app/routes/($locale).api.assistant.jsx`, lines 184–196:
+
 ```javascript
 const checkoutResult = await createCheckout({
   ...mcpBase,
@@ -147,6 +158,7 @@ return json({
 ### Test coverage gap for createCheckout
 
 `app/lib/mcp.server.test.js` contains:
+
 - ✅ Tests for `createCart()` success, soft-error, and errors
 - ✅ Tests for `updateCart()` success, soft-error, and errors
 - ❌ **Zero tests for `createCheckout()`** — no success, soft-error, or error path coverage
@@ -160,16 +172,19 @@ This mirrors the pre-fix gap that allowed the cart bug to ship. The lack of test
 ### High-level strategy
 
 1. **Guard `createCheckout()` on the `id` field** (`app/lib/mcp.server.js`, line 520):
+
    - Change `checkout: payload ?? null,` to `checkout: payload?.id ? payload : null,`
    - This mirrors the pattern already applied to `createCart()` and `updateCart()`
 
 2. **Add unit tests for `createCheckout()`** to `app/lib/mcp.server.test.js`:
+
    - Test success path: a valid checkout payload with `id` returns non-null
    - Test soft-error path: a soft-error payload (no `id`) returns `checkout: null`
    - Test error path: thrown `tool_error` is surfaced correctly
    - This closes the test-coverage gap and validates the fix
 
 3. **Optional: add a defensive check in the route** (`app/routes/($locale).api.assistant.jsx`, after line 190):
+
    - After normalizing the checkout, verify `checkout?.checkoutUrl` is not empty/falsy before using it
    - This provides defense-in-depth if another soft-error pattern emerges in the future
    - Currently, no such check exists (the cart path has one, but checkout does not)
@@ -189,23 +204,27 @@ This mirrors the pre-fix gap that allowed the cart bug to ship. The lack of test
 ## Regression risk areas
 
 1. **`createCheckout()` as a rare fallback** (`app/routes/($locale).api.assistant.jsx`, lines 184–196):
+
    - Currently only fires when a cart's `continue_url` is absent (cart exists but `checkoutUrl` is null/undefined)
    - Today, soft-error envelopes always throw `tool_error` exceptions, so they never reach the checkout consumption path
    - After the fix, soft-error envelopes will correctly return `checkout: null` instead, which the route already handles correctly (the conditional at line 189 checks truthiness)
    - **Mitigation:** Route handling is already correct; the fix is transparent to the route
 
 2. **`normalizeCheckout()` expectations** (`app/lib/mcp-normalize.js`, lines 238–243):
+
    - Expects a checkout object with at least `id` (for `result.id`) and optionally `continue_url` (for `checkoutUrl`)
    - After the guard, only real checkouts reach this function; soft-error envelopes never do
    - Test fixtures confirm this is the correct expectation
    - **Mitigation:** No changes needed; the function is already correct
 
 3. **Route's fallback checkout URL handling** (cart → checkout handoff, route lines 180–196):
+
    - If a cart's `continue_url` is absent, the route calls `createCheckout()` as a fallback
    - After the fix, a soft-error checkout will return `null`, and the route will not override the cart's `checkoutUrl` (line 195 sets it to `checkout?.checkoutUrl`, which is `undefined`, so no override occurs)
    - **Mitigation:** Route behavior is already correct; the fix will actually prevent junk checkout URLs from being set
 
 4. **Zero test coverage for `createCheckout()`** (`app/lib/mcp.server.test.js`):
+
    - No tests currently exist, so no regression in test behavior
    - However, the fix must include tests to prevent future regression (mirrors the cart fix pattern)
    - **Mitigation:** Add comprehensive test cases for success, soft-error, and error paths
@@ -220,4 +239,3 @@ This mirrors the pre-fix gap that allowed the cart bug to ship. The lack of test
 ## Conclusion
 
 The bug is a latent soft-error guard gap identical in class to the just-fixed cart bug: an unwrap expression that only distinguishes "no payload" from "a payload," not "a real success payload" from "a soft-error envelope." The fix is to guard on the `id` field, which is always present in real checkouts and always absent from soft-error envelopes. Live evidence confirms `id` is the correct discriminator. The route already handles null checkouts correctly, so the fix is transparent and low-risk. Test coverage must be added to prevent regression, mirroring the pattern applied to cart functions.
-
