@@ -8,6 +8,7 @@
     "dev": "shopify hydrogen dev --codegen",
     "build": "shopify hydrogen build --codegen",
     "preview": "npm run build && shopify hydrogen preview",
+    "deploy": "shopify hydrogen deploy --env production",
     "e2e": "npx playwright test",
     "e2e:ui": "npx playwright test --ui",
     "test:unit": "node --test app/lib/mcp.server.test.js app/lib/mcp-normalize.test.js app/lib/ucp-auth.server.test.js app/lib/assistant-reply.test.js",

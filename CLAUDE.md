@@ -13,7 +13,7 @@ This project uses the Claude Squad workflow. Agents at `~/.claude/agents/` and s
 - **Storefront connection:** `theme-evolution-os2-hydrogen.myshopify.com` (separate dev store from the Liquid theme project at `theme-evolution-os2.myshopify.com`)
 - **Repo location:** `~/Projects/Shopify/hydrogen-storefront`
 - **State:** Greenfield-ish — generated via `npm create @shopify/hydrogen@latest`, with some early development already in place
-- **Deploy target:** Local development only for now (see "Deploy targets" section below)
+- **Deploy target:** Shopify Oxygen — storefront `ashford-quantum-hydrogen`, environment `production` (see "Deploy targets" section below)
 
 ---
 
@@ -44,15 +44,38 @@ If you find yourself wanting a script that doesn't exist (e.g., `typecheck`, `co
 
 ## Deploy targets
 
-⚠️ **No production deploy target is configured for this project yet.** The Hydrogen storefront runs locally only.
+**Target: Shopify Oxygen** (native Hydrogen hosting). Configured 2026-07-15.
 
-When a deploy target is chosen (Shopify Oxygen, Vercel, Cloudflare Workers, Netlify, etc.):
+| Field | Value |
+| :--- | :--- |
+| Platform | Shopify Oxygen |
+| Store | `ashford-quantum.myshopify.com` (Ashford Quantum Solutions) |
+| Hydrogen storefront | `ashford-quantum-hydrogen` (`gid://shopify/HydrogenStorefront/1000158766`) |
+| Environment | **Production** (handle `production`, tracks branch `main`) |
+| Production URL | `https://ashford-quantum-hydrogen-bb6261bdb9884381da1b.o2.myshopify.dev` (private by default — see privacy note) |
+| Deploy command | `npm run deploy` → `shopify hydrogen deploy --env production` |
 
-1. Document the target here with: environment name, deploy command, verification URL.
-2. Update `.claude/agents/devops.md` (project-scoped) with the specific deploy procedure.
-3. The `/ship` slash command will then become operational for this project.
+### Deploy procedure
 
-Until then, the squad workflow terminates at `/qa` + operator sign-off. `/ship` will refuse with a clear message (the project-scoped DevOps agent is configured to refuse by design when no target is set).
+1. Ensure `main` is committed and green: `npm run lint`, `npm run build`, `npm run test:unit`.
+2. Run `npm run deploy` (or `shopify hydrogen deploy --env production`). **Requires an interactive terminal** — the CLI asks a `Continue?` confirmation and has no `--yes`/non-interactive flag, so it CANNOT run headlessly (it errors with "Failed to prompt"). Answer `yes`.
+3. Verify at the Production URL (see privacy note).
+
+### Environment variables (Oxygen)
+
+Oxygen auto-provisions the standard store vars (read-only): `PUBLIC_STORE_DOMAIN`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN`, `PUBLIC_STOREFRONT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_URL`, `SESSION_SECRET`. This app additionally needs these **custom** vars, which are NOT auto-provisioned and must be set in Oxygen: `UCP_AUTH_MODE=none`, `PUBLIC_UCP_AGENT_PROFILE_URL`, `PUBLIC_CHECKOUT_DOMAIN`. **`DEV_STOREFRONT_PASSWORD` must NEVER be set in production** (it drives the DEV-ONLY cookie shim). Push local `.env` with `shopify hydrogen env push --env production` (interactive). Oxygen deployments are **immutable** — env-var changes only take effect on the next deploy.
+
+### Verification-URL privacy note
+
+Oxygen environments are **private by default** — the URL 302-redirects to Shopify login. On the Basic plan you get **1 public** environment. To make the storefront publicly reachable: Storefront settings → Environments and variables → Production → URL privacy → **Public**. Until then, verify while logged into the store or via an authenticated browser session.
+
+### Rollback
+
+Oxygen retains prior deployments. Roll back by promoting a previous deployment in the Hydrogen channel (Storefront settings → Deployments), or by re-deploying a previous commit.
+
+### `/ship`
+
+`/ship` is operational via the project-scoped DevOps agent (`.claude/agents/devops.md`). GitHub continuous deployment is intentionally NOT wired, and the `shopify hydrogen deploy` confirmation is interactive, so `/ship` runs pre-deploy verification and post-deploy checks while the deploy confirmation itself is operator-run.
 
 ---
 
@@ -125,8 +148,8 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
 
 ### DevOps
 
-- Currently not operational for this project — no remote deploy target is configured (see "Deploy targets" above).
-- The project-scoped DevOps agent at `.claude/agents/devops.md` refuses `/ship` invocations until a deploy target is chosen and documented.
+- Operational for this project — the deploy target is **Shopify Oxygen** (see "Deploy targets" above).
+- The project-scoped DevOps agent at `.claude/agents/devops.md` runs `/ship`: pre-deploy verification, the operator-confirmed `shopify hydrogen deploy --env production`, then post-deploy verification against the Production URL.
 
 ### General
 
