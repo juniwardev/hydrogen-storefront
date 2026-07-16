@@ -188,8 +188,9 @@ export function normalizeCatalogProducts(rawProducts) {
 }
 
 /**
- * Normalizes a raw UCP cart object (from create_cart / update_cart
- * `structuredContent.cart`) to AssistantCart.
+ * Normalizes a raw UCP cart object (from create_cart / update_cart, whose
+ * payload is the flat `structuredContent` cart object — no `.cart` wrapper)
+ * to AssistantCart.
  *
  * UCP cart total shape (§6.5, AL-UCP-5, required change #7 — REWRITE from
  * the retired `rawCart.cost.total_amount` path, which does not exist in
@@ -200,7 +201,7 @@ export function normalizeCatalogProducts(rawProducts) {
  * SELECTS the "total" entry for the single-total Phase-1 UI; it does not
  * rebuild the array.
  *
- * @param {object} rawCart - structuredContent.cart
+ * @param {object} rawCart - the flat structuredContent cart object
  * @returns {AssistantCart}
  */
 export function normalizeCart(rawCart) {

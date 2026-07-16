@@ -305,11 +305,12 @@ describe('Analytics.ProductView — comprehensive payload contract', () => {
 // ---------------------------------------------------------------------------
 // normalizeCart — UCP totals[] rewrite (§6.5, AL-UCP-5, required change #7)
 // REPLACES the retired rawCart.cost.total_amount path, which does not exist
-// in UCP. PROBED live (2026-07-08, via a business-error probe on update_cart
-// with a malformed cart_id): structuredContent carries NO .cart key on
-// error; on success (per Dev MCP docs), structuredContent.cart.totals[] is
-// an array of {type, amount, display_text} minor-unit entries, and the grand
-// total is the entry with type === "total".
+// in UCP. PROBED live (2026-07-15, via a live create_cart probe against
+// ashford-quantum.myshopify.com — see
+// docs/bugs/ucp-cart-create-flat-shape-investigation.md): on success, the
+// cart object is FLAT at structuredContent — there is NO nested `.cart` key.
+// `structuredContent.totals[]` is an array of {type, amount, display_text}
+// minor-unit entries, and the grand total is the entry with type === "total".
 // ---------------------------------------------------------------------------
 
 describe('normalizeCart — UCP totals[] path (required change #7)', () => {

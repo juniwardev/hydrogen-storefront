@@ -336,11 +336,16 @@ export async function searchCatalog({
  * variant GID — a different nested shape from the retired /api/mcp
  * `add_items[].product_variant_id`.
  *
- * Response shape (PROBED + Dev MCP, corrects an earlier flat-payload
- * assumption): the cart object is nested at `structuredContent.cart`, NOT
- * flat at `structuredContent` — unlike search_catalog/create_checkout, whose
- * payloads ARE the top-level structuredContent object. `cart.continue_url`
- * and `cart.totals[]` live inside that nested `cart` object.
+ * Response shape (PROBED live 2026-07-15 against ashford-quantum.myshopify.com,
+ * UCP no-auth mode): a successful create_cart payload is FLAT at
+ * `structuredContent` — cart fields (`id`, `line_items`, `totals`,
+ * `continue_url`, `messages`) sit at the top level, exactly like
+ * search_catalog and create_checkout. There is NO nested `.cart` key. The
+ * earlier "nested at structuredContent.cart" claim was inferred from Dev MCP
+ * schema docs against the old dev store, where create_cart always crashed
+ * upstream (-32603) so no successful response was ever observed. The flat
+ * shape is the live-verified truth and matches the mcp-normalize.test.js
+ * fixtures.
  *
  * @param {{
  *   storeDomain: string,
@@ -378,13 +383,15 @@ export async function createCart({
   if (fetchImpl) callOpts.fetchImpl = fetchImpl;
 
   const payload = await callTool(callOpts);
-  // Success: structuredContent.cart. Business-error (tool_error) payloads
-  // observed live carry NO .cart key at all (just ucp/messages/continue_url) —
-  // the ?? null fallback keeps the caller's cart-presence check honest rather
-  // than fabricating a cart from the error envelope.
+  // Success: the payload IS the flat cart object (id/line_items/totals/
+  // continue_url/messages at top level) — mirror createCheckout, which unwraps
+  // the whole payload. Guard on the cart's identifying `id` so a NON-thrown
+  // soft business-outcome payload (isError:false with error messages[] and no
+  // cart fields — see callTool's business-error contract) still yields
+  // cart:null, preserving the route's defensive cart-presence check.
   return {
-    cart: payload.cart ?? null,
-    messages: payload.messages ?? [],
+    cart: payload?.id ? payload : null,
+    messages: payload?.messages ?? [],
   };
 }
 
@@ -437,9 +444,12 @@ export async function updateCart({
   if (fetchImpl) callOpts.fetchImpl = fetchImpl;
 
   const payload = await callTool(callOpts);
+  // Same flat shape as create_cart (see createCart above): the payload IS the
+  // cart object; there is no nested `.cart` key. Guard on `id` so a soft
+  // business-outcome payload (no cart fields) still yields cart:null.
   return {
-    cart: payload.cart ?? null,
-    messages: payload.messages ?? [],
+    cart: payload?.id ? payload : null,
+    messages: payload?.messages ?? [],
   };
 }
 

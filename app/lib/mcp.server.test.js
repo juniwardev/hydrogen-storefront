@@ -27,6 +27,8 @@ import assert from 'node:assert/strict';
 import {UCP_AUTH_MODES} from './const.js';
 import {
   callTool,
+  createCart,
+  updateCart,
   McpError,
 } from './mcp.server.js';
 import {__resetForTests} from './ucp-auth.server.js';
@@ -705,5 +707,126 @@ describe('callTool — auth modes', () => {
         return true;
       },
     );
+  });
+});
+
+/**
+ * docs/plans/fix-ucp-cart-create-flat-shape.md §8 — createCart/updateCart
+ * return-shape coverage. Pins the bug: a successful create_cart/update_cart
+ * response is FLAT at structuredContent (no nested `.cart` key), live-probed
+ * against ashford-quantum.myshopify.com
+ * (docs/bugs/ucp-cart-create-flat-shape-investigation.md). Cases 1 and 3 fail
+ * against the pre-fix `payload.cart ?? null` code and pass after the fix.
+ * Cases 2 and 4 guard against the tempting-but-wrong bare `payload ?? null`
+ * mis-fix, which would fabricate a truthy cart from a soft-error envelope.
+ */
+describe('createCart / updateCart — flat UCP cart payload', () => {
+  const FLAT_CART_PAYLOAD = {
+    id: 'gid://shopify/Cart/hWNEWlsFaRz4?key=abc',
+    line_items: [{id: 'gid://shopify/CartLine/1', quantity: 1}],
+    currency: 'USD',
+    totals: [
+      {type: 'subtotal', amount: 72995, display_text: 'Subtotal'},
+      {type: 'total', amount: 72995, display_text: 'Total'},
+    ],
+    continue_url:
+      'https://ashford-quantum.myshopify.com/cart/c/hWNEWlsFaRz4?key=abc',
+    messages: [],
+  };
+
+  const SOFT_ERROR_PAYLOAD = {
+    ucp: {status: 'error'},
+    messages: [
+      {type: 'error', code: 'some_soft_error', content: 'soft failure'},
+    ],
+  };
+
+  /**
+   * @param {object} fixture
+   */
+  function successFetch(fixture) {
+    return plainFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {structuredContent: fixture, isError: false},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+  }
+
+  test('1. createCart success (flat payload) returns a non-null cart carrying id/line_items/continue_url', async () => {
+    __resetForTests();
+    const result = await createCart({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 1}],
+      fetchImpl: successFetch(FLAT_CART_PAYLOAD),
+    });
+
+    assert.notEqual(
+      result.cart,
+      null,
+      'a successful create_cart must not yield cart:null',
+    );
+    assert.equal(result.cart.id, FLAT_CART_PAYLOAD.id);
+    assert.equal(result.cart.continue_url, FLAT_CART_PAYLOAD.continue_url);
+    assert.deepEqual(result.messages, []);
+  });
+
+  test('2. createCart soft-error payload (no id/cart fields) returns cart:null', async () => {
+    __resetForTests();
+    const result = await createCart({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 1}],
+      fetchImpl: successFetch(SOFT_ERROR_PAYLOAD),
+    });
+
+    assert.equal(result.cart, null);
+    assert.deepEqual(result.messages, SOFT_ERROR_PAYLOAD.messages);
+  });
+
+  test('3. updateCart success (flat payload) returns a non-null cart with id', async () => {
+    __resetForTests();
+    const result = await updateCart({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      cartId: FLAT_CART_PAYLOAD.id,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 2}],
+      fetchImpl: successFetch(FLAT_CART_PAYLOAD),
+    });
+
+    assert.notEqual(
+      result.cart,
+      null,
+      'a successful update_cart must not yield cart:null',
+    );
+    assert.equal(result.cart.id, FLAT_CART_PAYLOAD.id);
+  });
+
+  test('4. updateCart soft-error payload (no id/cart fields) returns cart:null', async () => {
+    __resetForTests();
+    const result = await updateCart({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      cartId: FLAT_CART_PAYLOAD.id,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 2}],
+      fetchImpl: successFetch(SOFT_ERROR_PAYLOAD),
+    });
+
+    assert.equal(result.cart, null);
+    assert.deepEqual(result.messages, SOFT_ERROR_PAYLOAD.messages);
   });
 });
