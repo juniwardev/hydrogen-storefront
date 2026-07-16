@@ -13,6 +13,7 @@ import {
   normalizeCatalogProducts,
   normalizeCheckout,
 } from '~/lib/mcp-normalize';
+import {composeAddReply} from '~/lib/assistant-reply';
 
 /** @typedef {import('@shopify/remix-oxygen').ActionFunctionArgs} ActionFunctionArgs */
 
@@ -172,13 +173,14 @@ export async function action({request, params, context}) {
             });
           }
 
-          const reply = 'Added to your assistant cart — checkout here.';
-
           // Handoff URL: prefer the cart's own continue_url (§3.5, AL-UCP-6).
           // Only call create_checkout as a fallback when the cart response
           // does not expose a usable checkoutUrl.
           if (cart.checkoutUrl) {
-            return json({reply, cart});
+            return json({
+              reply: composeAddReply({checkoutUrl: cart.checkoutUrl}),
+              cart,
+            });
           }
 
           const checkoutResult = await createCheckout({
@@ -189,10 +191,14 @@ export async function action({request, params, context}) {
           const checkout = checkoutResult.checkout
             ? normalizeCheckout(checkoutResult.checkout)
             : null;
+          // One resolved value feeds BOTH the reply copy and cart.checkoutUrl so
+          // the "checkout here" CTA can never contradict the rendered link
+          // (root cause fix — fix-assistant-checkout-null-dangling-cta).
+          const checkoutUrl = checkout?.checkoutUrl;
 
           return json({
-            reply,
-            cart: {...cart, checkoutUrl: checkout?.checkoutUrl},
+            reply: composeAddReply({checkoutUrl}),
+            cart: {...cart, checkoutUrl},
           });
         } catch (addErr) {
           // Stale-cart path (required change #4): if the submitted cartId
@@ -223,7 +229,10 @@ export async function action({request, params, context}) {
 
             if (cart.checkoutUrl) {
               return json({
-                reply: 'Started a new cart and added the item — checkout here.',
+                reply: composeAddReply({
+                  checkoutUrl: cart.checkoutUrl,
+                  cartReset: true,
+                }),
                 cart,
                 cartReset: true,
               });
@@ -237,10 +246,12 @@ export async function action({request, params, context}) {
             const checkout = checkoutResult.checkout
               ? normalizeCheckout(checkoutResult.checkout)
               : null;
+            // Same one-resolved-value-feeds-both invariant as the primary path.
+            const checkoutUrl = checkout?.checkoutUrl;
 
             return json({
-              reply: 'Started a new cart and added the item — checkout here.',
-              cart: {...cart, checkoutUrl: checkout?.checkoutUrl},
+              reply: composeAddReply({checkoutUrl, cartReset: true}),
+              cart: {...cart, checkoutUrl},
               cartReset: true,
             });
           }
