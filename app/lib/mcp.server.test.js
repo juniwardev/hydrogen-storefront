@@ -29,6 +29,7 @@ import {
   callTool,
   createCart,
   updateCart,
+  createCheckout,
   McpError,
 } from './mcp.server.js';
 import {__resetForTests} from './ucp-auth.server.js';
@@ -828,5 +829,95 @@ describe('createCart / updateCart — flat UCP cart payload', () => {
 
     assert.equal(result.cart, null);
     assert.deepEqual(result.messages, SOFT_ERROR_PAYLOAD.messages);
+  });
+});
+
+/**
+ * docs/plans/fix-create-checkout-soft-error-gap.md §7 — createCheckout
+ * soft-error guard coverage. Checkout is already flat (no `.checkout`
+ * wrapper to unwrap, unlike the pre-fix cart bug), so case 1 (success)
+ * passes even before the fix; case 2 (soft-error) is the pin — it fails
+ * against the pre-fix `payload ?? null` and passes after
+ * `payload?.id ? payload : null`.
+ */
+describe('createCheckout — soft-error guard', () => {
+  const FLAT_CHECKOUT_PAYLOAD = {
+    id: 'gid://shopify/Checkout/hWNEWo17abc',
+    status: 'open',
+    line_items: [{id: 'gid://shopify/CheckoutLine/1', quantity: 1}],
+    totals: [{type: 'total', amount: 72995, display_text: 'Total'}],
+    continue_url:
+      'https://ashford-quantum.myshopify.com/checkout/c/hWNEWo17abc',
+    messages: [],
+  };
+
+  const SOFT_ERROR_CHECKOUT_PAYLOAD = {
+    continue_url: 'https://ashford-quantum.myshopify.com/',
+    messages: [
+      {
+        type: 'error',
+        code: 'invalid',
+        content:
+          'The merchandise with id gid://shopify/ProductVariant/99999999999999 does not exist.',
+        severity: 'unrecoverable',
+      },
+    ],
+    ucp: {status: 'error'},
+  };
+
+  /**
+   * @param {object} fixture
+   */
+  function successFetch(fixture) {
+    return plainFetch(
+      async () =>
+        new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: {structuredContent: fixture, isError: false},
+          }),
+          {status: 200, headers: {'Content-Type': 'application/json'}},
+        ),
+    );
+  }
+
+  test('1. createCheckout success (flat payload) returns a non-null checkout carrying id/continue_url', async () => {
+    __resetForTests();
+    const result = await createCheckout({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 1}],
+      fetchImpl: successFetch(FLAT_CHECKOUT_PAYLOAD),
+    });
+
+    assert.notEqual(
+      result.checkout,
+      null,
+      'a successful create_checkout must not yield checkout:null',
+    );
+    assert.equal(result.checkout.id, FLAT_CHECKOUT_PAYLOAD.id);
+    assert.equal(
+      result.checkout.continue_url,
+      FLAT_CHECKOUT_PAYLOAD.continue_url,
+    );
+    assert.deepEqual(result.messages, []);
+  });
+
+  test('2. createCheckout soft-error payload (isError:false, no id) returns checkout:null', async () => {
+    __resetForTests();
+    const result = await createCheckout({
+      storeDomain: BASE_OPTS.storeDomain,
+      password: undefined,
+      profileUrl: BASE_OPTS.profileUrl,
+      authMode: UCP_AUTH_MODES.NONE,
+      lineItems: [{variantId: 'gid://shopify/ProductVariant/1', quantity: 1}],
+      fetchImpl: successFetch(SOFT_ERROR_CHECKOUT_PAYLOAD),
+    });
+
+    assert.equal(result.checkout, null);
+    assert.deepEqual(result.messages, SOFT_ERROR_CHECKOUT_PAYLOAD.messages);
   });
 });

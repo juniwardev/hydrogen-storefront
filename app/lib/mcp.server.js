@@ -513,10 +513,15 @@ export async function createCheckout({
 
   const payload = await callTool(callOpts);
   // Success: checkout fields are FLAT at structuredContent (id, status,
-  // messages, continue_url, totals[], line_items[]) — unlike the cart tools,
-  // which nest under a .cart key. There is no .checkout wrapper to unwrap.
+  // messages, continue_url, totals[], line_items[]) — the same flat shape as
+  // the cart tools (create_cart / update_cart) and search_catalog. There is no
+  // .checkout wrapper to unwrap. Guard on the checkout's identifying `id` so a
+  // NON-thrown soft business-outcome payload (isError:false with error
+  // messages[] and no checkout fields — top-level keys continue_url/messages/
+  // ucp, no id, PROBED live) yields checkout:null instead of a junk checkout,
+  // mirroring createCart/updateCart's identity guard.
   return {
-    checkout: payload ?? null,
+    checkout: payload?.id ? payload : null,
     messages: payload?.messages ?? [],
   };
 }
