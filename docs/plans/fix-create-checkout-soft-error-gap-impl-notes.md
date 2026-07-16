@@ -11,9 +11,9 @@
 
 ## Files changed
 
-| File | Reason |
-| --- | --- |
-| `app/lib/mcp.server.js` | `createCheckout()` return: guard `checkout` on `payload?.id` instead of bare `payload ?? null`, so a non-thrown soft-error envelope (`isError:false`, no `id`) yields `checkout: null` instead of a junk truthy object. Comment expanded to document the guard rationale, mirroring `updateCart`'s comment. |
+| File                         | Reason                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/lib/mcp.server.js`      | `createCheckout()` return: guard `checkout` on `payload?.id` instead of bare `payload ?? null`, so a non-thrown soft-error envelope (`isError:false`, no `id`) yields `checkout: null` instead of a junk truthy object. Comment expanded to document the guard rationale, mirroring `updateCart`'s comment.                                                                                                       |
 | `app/lib/mcp.server.test.js` | Added `createCheckout` to the existing import (line 28 area). Appended a new `describe('createCheckout — soft-error guard', ...)` block with 2 cases (success + soft-error), reusing `plainFetch`, `BASE_OPTS`, `UCP_AUTH_MODES`, `__resetForTests()`, and a locally-scoped `successFetch` helper (mirroring the cart block's pattern, since the cart block's `successFetch` is block-scoped and not importable). |
 
 No other files touched. `git diff --stat` confirms only these two files changed by this task; the repo's other modified files (`app/lib/const.js`, `app/lib/mcp-normalize.js`, `app/lib/mcp-normalize.test.js`, `app/routes/($locale).api.assistant.jsx`) are pre-existing uncommitted work from other in-flight features (`ucp-no-auth-mode`, `ucp-cart-create-flat-shape`) and were left untouched, as instructed.
@@ -21,33 +21,35 @@ No other files touched. `git diff --stat` confirms only these two files changed 
 ### Before/after — the edited expression (`app/lib/mcp.server.js`, `createCheckout()` return)
 
 **Before:**
+
 ```js
-  const payload = await callTool(callOpts);
-  // Success: checkout fields are FLAT at structuredContent (id, status,
-  // messages, continue_url, totals[], line_items[]) — the same flat shape as
-  // the cart tools (create_cart / update_cart) and search_catalog. There is no
-  // .checkout wrapper to unwrap.
-  return {
-    checkout: payload ?? null,
-    messages: payload?.messages ?? [],
-  };
+const payload = await callTool(callOpts);
+// Success: checkout fields are FLAT at structuredContent (id, status,
+// messages, continue_url, totals[], line_items[]) — the same flat shape as
+// the cart tools (create_cart / update_cart) and search_catalog. There is no
+// .checkout wrapper to unwrap.
+return {
+  checkout: payload ?? null,
+  messages: payload?.messages ?? [],
+};
 ```
 
 **After:**
+
 ```js
-  const payload = await callTool(callOpts);
-  // Success: checkout fields are FLAT at structuredContent (id, status,
-  // messages, continue_url, totals[], line_items[]) — the same flat shape as
-  // the cart tools (create_cart / update_cart) and search_catalog. There is no
-  // .checkout wrapper to unwrap. Guard on the checkout's identifying `id` so a
-  // NON-thrown soft business-outcome payload (isError:false with error
-  // messages[] and no checkout fields — top-level keys continue_url/messages/
-  // ucp, no id, PROBED live) yields checkout:null instead of a junk checkout,
-  // mirroring createCart/updateCart's identity guard.
-  return {
-    checkout: payload?.id ? payload : null,
-    messages: payload?.messages ?? [],
-  };
+const payload = await callTool(callOpts);
+// Success: checkout fields are FLAT at structuredContent (id, status,
+// messages, continue_url, totals[], line_items[]) — the same flat shape as
+// the cart tools (create_cart / update_cart) and search_catalog. There is no
+// .checkout wrapper to unwrap. Guard on the checkout's identifying `id` so a
+// NON-thrown soft business-outcome payload (isError:false with error
+// messages[] and no checkout fields — top-level keys continue_url/messages/
+// ucp, no id, PROBED live) yields checkout:null instead of a junk checkout,
+// mirroring createCart/updateCart's identity guard.
+return {
+  checkout: payload?.id ? payload : null,
+  messages: payload?.messages ?? [],
+};
 ```
 
 `messages` line: **unchanged**, confirmed already `payload?.messages ?? []` before this fix (per plan §4.3/AL-1). No route change, no `createCart`/`updateCart` change, no `normalizeCheckout` change, no nesting change (checkout was already flat).
@@ -128,7 +130,7 @@ All 67 tests pass (the pre-existing 65 baseline + the 2 new `createCheckout` cas
 
 Both non-blocking advisories from `docs/reviews/fix-create-checkout-soft-error-gap-review.md` are recorded here so QA reads them at its step:
 
-1. **The plan's prose (§4.1/AL-4) overstated live-capture grounding.** It claimed a real checkout *success* (`isError:false`) was live-captured carrying `id`. In fact, per the investigation, **both** probed live cases returned `isError:true` (error cases that happened to carry `id`); a genuine `isError:false` success was never captured live. The discriminator (`id`) is still correct — it rests on `normalizeCheckout`'s structural dependence on `rawCheckout.id` (`mcp-normalize.js:240`), not on the probe. **QA should NOT expect a live-reproducible soft-error success case** for `createCheckout`; the unit test (case 2, built from an `isError:false` fixture matching the investigation's captured soft-error *shape*) is the primary guard for this fix, not a live repro. Nothing inaccurate shipped in the code comment itself — the "PROBED live" attribution in the code comment is scoped only to the soft-error envelope's top-level keys, which is accurate.
+1. **The plan's prose (§4.1/AL-4) overstated live-capture grounding.** It claimed a real checkout _success_ (`isError:false`) was live-captured carrying `id`. In fact, per the investigation, **both** probed live cases returned `isError:true` (error cases that happened to carry `id`); a genuine `isError:false` success was never captured live. The discriminator (`id`) is still correct — it rests on `normalizeCheckout`'s structural dependence on `rawCheckout.id` (`mcp-normalize.js:240`), not on the probe. **QA should NOT expect a live-reproducible soft-error success case** for `createCheckout`; the unit test (case 2, built from an `isError:false` fixture matching the investigation's captured soft-error _shape_) is the primary guard for this fix, not a live repro. Nothing inaccurate shipped in the code comment itself — the "PROBED live" attribution in the code comment is scoped only to the soft-error envelope's top-level keys, which is accurate.
 
 2. **Post-fix lateral UX state on the checkout fallback's soft-error path.** When `createCheckout` returns `checkout: null` (post-fix), the route's reply copy still references "checkout here" with no usable URL (`checkoutUrl` becomes `undefined`) — a dangling CTA. Pre-fix, the same path produced a bogus link to the store homepage instead. Both are degraded states; post-fix is a lateral move (no misleading homepage-as-checkout link) rather than a regression this fix introduces. This is tracked separately as its own bug: `docs/bugs/assistant-checkout-null-dangling-cta.md`. **QA should treat the dangling/dead-end CTA as a known, pre-scoped-out condition — not a FAIL for this fix.**
 

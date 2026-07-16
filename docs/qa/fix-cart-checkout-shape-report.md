@@ -11,12 +11,12 @@
 
 Read from `.env` (read-only, not edited):
 
-| Variable | Value |
-| --- | --- |
-| `PUBLIC_STORE_DOMAIN` | `ashford-quantum.myshopify.com` |
+| Variable                 | Value                           |
+| ------------------------ | ------------------------------- |
+| `PUBLIC_STORE_DOMAIN`    | `ashford-quantum.myshopify.com` |
 | `PUBLIC_CHECKOUT_DOMAIN` | `ashford-quantum.myshopify.com` |
-| `UCP_AUTH_MODE` | `none` |
-| `SHOP_ID` | `83979895032` |
+| `UCP_AUTH_MODE`          | `none`                          |
+| `SHOP_ID`                | `83979895032`                   |
 
 `UCP_AUTH_MODE=none` is present, so the live add-to-cart path (the `none` auth path) is reachable and was exercised directly — no `/password` mint was needed or observed.
 
@@ -43,13 +43,14 @@ Live add-to-cart via the running assistant now returns a real cart with a real `
    - `2. createCart soft-error payload (no id/cart fields) returns cart:null` — PASS
    - `3. updateCart success (flat payload) returns a non-null cart with id` — PASS
    - `4. updateCart soft-error payload (no id/cart fields) returns cart:null` — PASS
-   The impl-notes' prove-the-pin log (cases 1 and 3 `AssertionError`-failing pre-fix, all green post-fix) was reviewed and is consistent with the fix's stated mechanism; not independently re-run against a reverted tree in this session (see reproduction note above), but the current-code pass plus the direct code read (below) closes the loop.
+     The impl-notes' prove-the-pin log (cases 1 and 3 `AssertionError`-failing pre-fix, all green post-fix) was reviewed and is consistent with the fix's stated mechanism; not independently re-run against a reverted tree in this session (see reproduction note above), but the current-code pass plus the direct code read (below) closes the loop.
 2. **`npm run lint`** — 72 total problems repo-wide (matches documented baseline). Verified directly: `grep -iE 'mcp\.server\.js|mcp-normalize\.js|mcp\.server\.test\.js|mcp-normalize\.test\.js'` against the lint output returns **zero lines** — no lint errors in any of the four touched files.
 3. **`npm run build`** — exit code 0. Emits the documented pre-existing "Bundle analyzer failed to analyze the bundle: TypeError: Invalid URL" / "Could not generate bundle analysis summary: ENOENT" notices; these do not fail the build and are already documented as pre-existing/unrelated in the impl-notes.
 
 ### Code verification (direct read of `app/lib/mcp.server.js`)
 
 Confirmed the shipped code matches the plan exactly:
+
 ```js
 // createCart (line ~392-395)
 return {
@@ -58,6 +59,7 @@ return {
 };
 // updateCart (line ~450-453) — identical pattern
 ```
+
 Comments correctly describe the live-probed flat shape and the `id`-guard rationale. No stray `payload.cart` references remain.
 
 ### Live end-to-end (Playwright MCP)
@@ -113,7 +115,7 @@ Confirmed via unit test (see below) and via the fact that the live checkout fall
 1. **`npm run test:unit`** — the `createCheckout — soft-error guard` describe block is present and passing:
    - `1. createCheckout success (flat payload) returns a non-null checkout carrying id/continue_url` — PASS
    - `2. createCheckout soft-error payload (isError:false, no id) returns checkout:null` — PASS (**this is the bug-pinning case**)
-   Total suite: `67/67` (confirmed matches the impl-notes' claimed baseline: 65 prior + 2 new checkout cases = 67; the cart fix's 4 cases were already folded into the 65 baseline per the impl-notes chain). I reviewed the impl-notes' captured "before" run (case 2 genuinely `AssertionError`-failing against `payload ?? null`, returning the truthy soft-error envelope instead of `null`) — this is the load-bearing pin, and it is honest and specific (not a smoke assertion; it asserts strict equality against the exact soft-error fixture object vs. `null`).
+     Total suite: `67/67` (confirmed matches the impl-notes' claimed baseline: 65 prior + 2 new checkout cases = 67; the cart fix's 4 cases were already folded into the 65 baseline per the impl-notes chain). I reviewed the impl-notes' captured "before" run (case 2 genuinely `AssertionError`-failing against `payload ?? null`, returning the truthy soft-error envelope instead of `null`) — this is the load-bearing pin, and it is honest and specific (not a smoke assertion; it asserts strict equality against the exact soft-error fixture object vs. `null`).
 2. **`npm run lint`** — same 72-problem baseline; zero lint errors attributed to `app/lib/mcp.server.js` or `app/lib/mcp.server.test.js` (the two files this fix touches).
 3. **`npm run build`** — exit code 0 (same pre-existing bundle-analyzer notice, confirmed unrelated).
 
@@ -126,6 +128,7 @@ return {
   messages: payload?.messages ?? [],
 };
 ```
+
 Matches the plan exactly. `messages` line correctly left unchanged (it was already `payload?.messages ?? []` pre-fix, per AL-1 — verified, no diff needed there).
 
 ### Live checkout-fallback observation
@@ -143,17 +146,17 @@ The `createCheckout` fallback (route `:184-196`) only fires when a cart's `conti
 
 ## Regression matrix
 
-| Area | Result |
-| --- | --- |
-| `search_catalog` still returns real products (read path) | PASS — 8 real products with images/prices returned live |
-| Cart soft-error / stale-cart path still yields `cart: null` correctly for genuine business errors | PASS — invalid-variant curl probe correctly returned `tool_error`, not a fabricated cart |
-| Stale/invalid `cart_id` retry produces a fresh real cart + `cartReset:true` | PASS — confirmed live via curl, matches plan's documented regression-risk item #4 |
-| `createCheckout`'s real-checkout path not regressed | PASS by code inspection — guard only changes the soft-error branch; `payload?.id` truthy → returns `payload` unchanged, byte-identical to pre-fix on the real-success path. Not independently live-exercised (fallback never fired this session, as expected) |
-| `normalizeCart`/`normalizeCheckout` receive correct shape | PASS — live cart response shows `id`, `totalAmount`, `lineCount`, `checkoutUrl` all correctly populated by `normalizeCart`; `normalizeCheckout` not live-exercised (checkout fallback never fired) but unit-covered |
-| SSR/hydration clean on assistant surface and a product page | PASS — zero console errors/warnings on homepage, assistant panel interactions, and the product page `/products/the-collection-snowboard-alternate-template` (SSR HTML confirmed substantive via curl, not a bare `<div id="root">`) |
-| `<Analytics.ProductView>` gets a valid variantId | Indirectly confirmed — product page load triggered `monorail-edge.shopifysvc.com/v1/produce` and a `graphql.json` POST (both 200), consistent with Analytics firing; not directly asserting the `variantId` payload value since this is outside the diff surface of either fix (neither touches Analytics or the product page). No crash, no console error. |
-| Second add-to-cart in the same session (updateCart path) | PASS — confirmed same cart id reused, real cart returned, no `tool_error` |
-| `messages[]` handling on success | PASS — unit-covered (`result.messages` deep-equals `[]` on success fixtures for both fixes) |
+| Area                                                                                              | Result                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_catalog` still returns real products (read path)                                          | PASS — 8 real products with images/prices returned live                                                                                                                                                                                                                                                                                                     |
+| Cart soft-error / stale-cart path still yields `cart: null` correctly for genuine business errors | PASS — invalid-variant curl probe correctly returned `tool_error`, not a fabricated cart                                                                                                                                                                                                                                                                    |
+| Stale/invalid `cart_id` retry produces a fresh real cart + `cartReset:true`                       | PASS — confirmed live via curl, matches plan's documented regression-risk item #4                                                                                                                                                                                                                                                                           |
+| `createCheckout`'s real-checkout path not regressed                                               | PASS by code inspection — guard only changes the soft-error branch; `payload?.id` truthy → returns `payload` unchanged, byte-identical to pre-fix on the real-success path. Not independently live-exercised (fallback never fired this session, as expected)                                                                                               |
+| `normalizeCart`/`normalizeCheckout` receive correct shape                                         | PASS — live cart response shows `id`, `totalAmount`, `lineCount`, `checkoutUrl` all correctly populated by `normalizeCart`; `normalizeCheckout` not live-exercised (checkout fallback never fired) but unit-covered                                                                                                                                         |
+| SSR/hydration clean on assistant surface and a product page                                       | PASS — zero console errors/warnings on homepage, assistant panel interactions, and the product page `/products/the-collection-snowboard-alternate-template` (SSR HTML confirmed substantive via curl, not a bare `<div id="root">`)                                                                                                                         |
+| `<Analytics.ProductView>` gets a valid variantId                                                  | Indirectly confirmed — product page load triggered `monorail-edge.shopifysvc.com/v1/produce` and a `graphql.json` POST (both 200), consistent with Analytics firing; not directly asserting the `variantId` payload value since this is outside the diff surface of either fix (neither touches Analytics or the product page). No crash, no console error. |
+| Second add-to-cart in the same session (updateCart path)                                          | PASS — confirmed same cart id reused, real cart returned, no `tool_error`                                                                                                                                                                                                                                                                                   |
+| `messages[]` handling on success                                                                  | PASS — unit-covered (`result.messages` deep-equals `[]` on success fixtures for both fixes)                                                                                                                                                                                                                                                                 |
 
 ---
 

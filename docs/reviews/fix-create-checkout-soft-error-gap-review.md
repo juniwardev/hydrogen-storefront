@@ -15,19 +15,19 @@ actually matter for this fix.
 
 ## Citation verification (all confirmed against the real code)
 
-| Plan claim | Real code | Verdict |
-| --- | --- | --- |
-| `createCheckout` returns `checkout: payload ?? null` at ~520 | `app/lib/mcp.server.js:520` — exact | ✓ |
-| `messages: payload?.messages ?? []` at :521 (no change needed) | `mcp.server.js:521` — exact | ✓ |
-| Comment at :515–518 describes flat shape, says nothing about soft-error | `mcp.server.js:515–518` — exact | ✓ |
-| `callTool` throws `empty_result` on falsy payload | `mcp.server.js:246–248` and `:262–264` | ✓ |
-| `callTool` throws `tool_error` on `result.isError` | `mcp.server.js:267–271` | ✓ |
-| `createCart`/`updateCart` already use `payload?.id ? payload : null` | `mcp.server.js:450–453` | ✓ |
-| Route gates on `if (checkoutResult.checkout)` at :189–191 | `($locale).api.assistant.jsx:189–191` | ✓ |
-| `normalizeCheckout` keys on `rawCheckout.id` | `mcp-normalize.js:240` (`id`), `:241` (`continue_url`) | ✓ |
-| Harness `plainFetch`/`withPasswordShim`/`BASE_OPTS`/`UCP_AUTH_MODES`/`__resetForTests` exist | test file lines 44, 76, 83, 27, 29 (module scope) | ✓ |
-| `successFetch` is scoped INSIDE the cart `describe` (not reusable) | `mcp.server.test.js:742` — confirmed local | ✓ |
-| Import line 28 lacks `createCheckout`; zero coverage today | `mcp.server.test.js:28` — `{callTool, createCart, updateCart, McpError}` only | ✓ |
+| Plan claim                                                                                   | Real code                                                                     | Verdict |
+| -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------- |
+| `createCheckout` returns `checkout: payload ?? null` at ~520                                 | `app/lib/mcp.server.js:520` — exact                                           | ✓       |
+| `messages: payload?.messages ?? []` at :521 (no change needed)                               | `mcp.server.js:521` — exact                                                   | ✓       |
+| Comment at :515–518 describes flat shape, says nothing about soft-error                      | `mcp.server.js:515–518` — exact                                               | ✓       |
+| `callTool` throws `empty_result` on falsy payload                                            | `mcp.server.js:246–248` and `:262–264`                                        | ✓       |
+| `callTool` throws `tool_error` on `result.isError`                                           | `mcp.server.js:267–271`                                                       | ✓       |
+| `createCart`/`updateCart` already use `payload?.id ? payload : null`                         | `mcp.server.js:450–453`                                                       | ✓       |
+| Route gates on `if (checkoutResult.checkout)` at :189–191                                    | `($locale).api.assistant.jsx:189–191`                                         | ✓       |
+| `normalizeCheckout` keys on `rawCheckout.id`                                                 | `mcp-normalize.js:240` (`id`), `:241` (`continue_url`)                        | ✓       |
+| Harness `plainFetch`/`withPasswordShim`/`BASE_OPTS`/`UCP_AUTH_MODES`/`__resetForTests` exist | test file lines 44, 76, 83, 27, 29 (module scope)                             | ✓       |
+| `successFetch` is scoped INSIDE the cart `describe` (not reusable)                           | `mcp.server.test.js:742` — confirmed local                                    | ✓       |
+| Import line 28 lacks `createCheckout`; zero coverage today                                   | `mcp.server.test.js:28` — `{callTool, createCart, updateCart, McpError}` only | ✓       |
 
 The plan's self-awareness that `successFetch` is block-scoped and must be
 re-declared (or `plainFetch` reused) in the new block is correct and is the kind
@@ -40,7 +40,7 @@ of detail that usually gets missed. Credit where due.
 ### (a) Is `id` the correct discriminator? YES.
 
 `normalizeCheckout` (`mcp-normalize.js:238–243`) structurally reads
-`rawCheckout.id` to build its `id` field. A payload without `id` is *definitionally*
+`rawCheckout.id` to build its `id` field. A payload without `id` is _definitionally_
 useless downstream — it would produce `{id: undefined, checkoutUrl: <fallback>}`.
 Guarding on `id` is therefore self-consistent with the existing normalize contract,
 not an arbitrary choice: any payload the guard rejects is a payload `normalizeCheckout`
@@ -49,7 +49,7 @@ cart guard exactly. The investigation's live probe confirms the soft-error envel
 top-level keys are `["continue_url","messages","ucp"]` with no `id`, and AL-4 correctly
 rejects `continue_url` as a discriminator (the soft-error envelope carries a fallback
 `continue_url` too). `payload?.id ? payload : null` is right. No failure mode survives
-scrutiny: the only theoretical case that breaks it — a *real* checkout success with no
+scrutiny: the only theoretical case that breaks it — a _real_ checkout success with no
 `id` — is already broken in `normalizeCheckout` today, so filtering it to `null` is
 strictly correct rather than a regression.
 
@@ -59,7 +59,7 @@ This is the one real difference from the cart fix, so I traced it rather than tr
 the plan.
 
 1. `($locale).api.assistant.jsx:180` — reaching the `createCheckout` fallback at :184
-   *requires* `cart.checkoutUrl` to have been falsy (the truthy branch returns at :181).
+   _requires_ `cart.checkoutUrl` to have been falsy (the truthy branch returns at :181).
 2. `:189–191` — with `checkoutResult.checkout === null`, the ternary short-circuits;
    `normalizeCheckout` is **not** called, so no `{id: undefined}` object is produced.
    `checkout = null`. No crash.
@@ -78,7 +78,7 @@ pre-existing, handled state — not a new one.
 ## Bug-fix lenses
 
 - **Root cause vs symptom:** Root cause. The guard converts an id-less soft-error
-  envelope into `null` so the route's *existing* null branch fires — it does not paper
+  envelope into `null` so the route's _existing_ null branch fires — it does not paper
   over a symptom. Matches the investigation's documented root cause exactly.
 - **Scope minimality:** Minimal and correct. Only the `checkout:` expression on
   `mcp.server.js:520` plus an augmented comment, plus the test file. No cart change, no
@@ -118,7 +118,7 @@ pre-existing, handled state — not a new one.
    structural dependence on `id`, not on the probe — so this changes nothing about the
    fix. But the wording claims more empirical grounding than exists. Preferred phrasing:
    "id was present in every probed checkout response (all isError:true); the guard is
-   self-consistent because normalizeCheckout requires id." Note: the *code comment* the
+   self-consistent because normalizeCheckout requires id." Note: the _code comment_ the
    Coder is told to write (§4.1 "After") attributes "PROBED live" only to the soft-error
    envelope keys — which IS accurate — so nothing inaccurate ships in code. This nit is
    confined to plan prose.

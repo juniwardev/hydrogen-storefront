@@ -31,16 +31,18 @@ Positive confirmation: monorail `produce_batch` network request #88 contains:
 ```json
 {
   "event_name": "product_page_rendered",
-  "products": [{
-    "product_gid": "gid://shopify/Product/9356161056988",
-    "name": "The Videographer Snowboard",
-    "variant": "Default Title",
-    "brand": "Unknown",
-    "price": 885.95,
-    "variant_gid": "gid://shopify/ProductVariant/50239738413276",
-    "product_id": 9356161056988,
-    "variant_id": 50239738413276
-  }]
+  "products": [
+    {
+      "product_gid": "gid://shopify/Product/9356161056988",
+      "name": "The Videographer Snowboard",
+      "variant": "Default Title",
+      "brand": "Unknown",
+      "price": 885.95,
+      "variant_gid": "gid://shopify/ProductVariant/50239738413276",
+      "product_id": 9356161056988,
+      "variant_id": 50239738413276
+    }
+  ]
 }
 ```
 
@@ -50,18 +52,18 @@ All six fields from Hydrogen `validateProducts()` (lines 552–572) are truthy: 
 
 ## Per-scenario table
 
-| # | Scenario | Expected | Actual | Pass/Fail |
-|---|----------|----------|--------|-----------|
-| P1 | Analytics — 0 `[h2:error:ShopifyAnalytics]` errors | 0 errors total for any field | 0 errors across all interactions (initial, search, add-to-cart, empty-state) | **PASS** |
-| P1b | Analytics — `ProductView` events fire with valid payload | Truthy variantId, vendor, variantTitle in monorail payload | monorail request #88 confirms `variant: "Default Title"`, `brand: "Unknown"`, `variant_id: 50239738413276` all present and truthy | **PASS** |
-| P2 | DOM nesting regression — no `validateDOMNesting` after add-to-cart | 0 `validateDOMNesting` warnings | 0 warnings. Cart summary `<Money>` correctly wrapped in `<div>` (not `<p>`); no regression from round 2 fix | **PASS** |
-| 3 | SSR + hydration: real server HTML; 0 React hydration warnings; launcher appears | Server HTML has product content; 0 hydration warnings; chat button visible | `curl` of `/` returns "The Complete Snowboard" ×3 in markup. 0 React hydration warnings. Floating launcher renders as "Open shopping assistant" button after hydration. | **PASS** |
-| 4 | Product discovery: 8 cards with real `cdn.shopify.com` images, titles + prices | Cards rendered, CDN images, titles, prices populated | 8 cards: The Videographer Snowboard, Collection Snowboard Oxygen, Liquid, Hydrogen, The Hidden Snowboard, Multi-location, Multi-managed, The Complete Snowboard. All images from `cdn.shopify.com`. All prices populated. | **PASS** |
-| 5 | Price correctness (AL-21): sane prices, NOT 100× | ~$600–$1,025 for snowboards | $885.95 / $1,025.00 / $749.95 / $600.00 / $749.95 / $729.95 / $629.95 / $699.95. The Complete Snowboard at $699.95 matches homepage card. No 100× anomaly. | **PASS** |
-| 6 | Cart assistance: add-to-cart → cart summary with sane price + real checkout URL | Cart summary shows item count + price + real `checkout_url` link | "Assistant cart — 1 item · $885.95" with "Go to checkout →" linking to `https://theme-evolution-os2-hydrogen.myshopify.com/cart/c/hWNDpjK5T1BYv56mloA4mq2y?key=...` (real Shopify Cart GID; `target="_blank" rel="noopener noreferrer"`) | **PASS** |
-| 7 | Empty vs error states distinct: junk query → empty (neutral), not `role="alert"` | "No matches found" in neutral styling; no `role="alert"` elements | "No matches found — try different words." for "asdfqwerty12345". `document.querySelectorAll('[role="alert"]').length === 0`. Send re-enabled (empty input). | **PASS** |
-| 8 | Trust boundary: browser calls only `/api/assistant`, not raw `/api/mcp` | 3 POSTs to `localhost:3000/api/assistant`; 0 raw MCP calls from browser | 3 POSTs to `http://localhost:3000/api/assistant` (200 OK each). No request to `theme-evolution-os2-hydrogen.myshopify.com/api/mcp` in browser network log. MCP client code absent from client bundles (Coder-verified). | **PASS** |
-| 9 | Automated gate: `npm run test:unit` 42/42 pass | 42 pass, 0 fail | 42/42 pass. Suites include: two-path normalizer isolation, vendor truthy + negative-pair, comprehensive Analytics.ProductView payload contract (positive × 2, negative × 6), callTool 429 rate-limit handling. | **PASS** |
+| #   | Scenario                                                                         | Expected                                                                   | Actual                                                                                                                                                                                                                                   | Pass/Fail |
+| --- | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| P1  | Analytics — 0 `[h2:error:ShopifyAnalytics]` errors                               | 0 errors total for any field                                               | 0 errors across all interactions (initial, search, add-to-cart, empty-state)                                                                                                                                                             | **PASS**  |
+| P1b | Analytics — `ProductView` events fire with valid payload                         | Truthy variantId, vendor, variantTitle in monorail payload                 | monorail request #88 confirms `variant: "Default Title"`, `brand: "Unknown"`, `variant_id: 50239738413276` all present and truthy                                                                                                        | **PASS**  |
+| P2  | DOM nesting regression — no `validateDOMNesting` after add-to-cart               | 0 `validateDOMNesting` warnings                                            | 0 warnings. Cart summary `<Money>` correctly wrapped in `<div>` (not `<p>`); no regression from round 2 fix                                                                                                                              | **PASS**  |
+| 3   | SSR + hydration: real server HTML; 0 React hydration warnings; launcher appears  | Server HTML has product content; 0 hydration warnings; chat button visible | `curl` of `/` returns "The Complete Snowboard" ×3 in markup. 0 React hydration warnings. Floating launcher renders as "Open shopping assistant" button after hydration.                                                                  | **PASS**  |
+| 4   | Product discovery: 8 cards with real `cdn.shopify.com` images, titles + prices   | Cards rendered, CDN images, titles, prices populated                       | 8 cards: The Videographer Snowboard, Collection Snowboard Oxygen, Liquid, Hydrogen, The Hidden Snowboard, Multi-location, Multi-managed, The Complete Snowboard. All images from `cdn.shopify.com`. All prices populated.                | **PASS**  |
+| 5   | Price correctness (AL-21): sane prices, NOT 100×                                 | ~$600–$1,025 for snowboards                                                | $885.95 / $1,025.00 / $749.95 / $600.00 / $749.95 / $729.95 / $629.95 / $699.95. The Complete Snowboard at $699.95 matches homepage card. No 100× anomaly.                                                                               | **PASS**  |
+| 6   | Cart assistance: add-to-cart → cart summary with sane price + real checkout URL  | Cart summary shows item count + price + real `checkout_url` link           | "Assistant cart — 1 item · $885.95" with "Go to checkout →" linking to `https://theme-evolution-os2-hydrogen.myshopify.com/cart/c/hWNDpjK5T1BYv56mloA4mq2y?key=...` (real Shopify Cart GID; `target="_blank" rel="noopener noreferrer"`) | **PASS**  |
+| 7   | Empty vs error states distinct: junk query → empty (neutral), not `role="alert"` | "No matches found" in neutral styling; no `role="alert"` elements          | "No matches found — try different words." for "asdfqwerty12345". `document.querySelectorAll('[role="alert"]').length === 0`. Send re-enabled (empty input).                                                                              | **PASS**  |
+| 8   | Trust boundary: browser calls only `/api/assistant`, not raw `/api/mcp`          | 3 POSTs to `localhost:3000/api/assistant`; 0 raw MCP calls from browser    | 3 POSTs to `http://localhost:3000/api/assistant` (200 OK each). No request to `theme-evolution-os2-hydrogen.myshopify.com/api/mcp` in browser network log. MCP client code absent from client bundles (Coder-verified).                  | **PASS**  |
+| 9   | Automated gate: `npm run test:unit` 42/42 pass                                   | 42 pass, 0 fail                                                            | 42/42 pass. Suites include: two-path normalizer isolation, vendor truthy + negative-pair, comprehensive Analytics.ProductView payload contract (positive × 2, negative × 6), callTool 429 rate-limit handling.                           | **PASS**  |
 
 ---
 
@@ -71,30 +73,34 @@ None. All prior defects are cleared with no new defects introduced.
 
 **Prior defects status:**
 
-| Defect | Round claimed fixed | Status after round 3 |
-|--------|---------------------|----------------------|
-| Defect 1 (HIGH): Analytics Contract — `variantTitle: ''` falsy — events dropped for every card | Round 3 | **CLEARED** — 0 `[h2:error:ShopifyAnalytics]` errors; all 6 required fields truthy; monorail events firing |
-| Defect 2 (MEDIUM): `<Money>` inside `<p>` in cart summary | Round 2 | **CLEARED** (remains cleared; no regression) |
+| Defect                                                                                         | Round claimed fixed | Status after round 3                                                                                       |
+| ---------------------------------------------------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Defect 1 (HIGH): Analytics Contract — `variantTitle: ''` falsy — events dropped for every card | Round 3             | **CLEARED** — 0 `[h2:error:ShopifyAnalytics]` errors; all 6 required fields truthy; monorail events firing |
+| Defect 2 (MEDIUM): `<Money>` inside `<p>` in cart summary                                      | Round 2             | **CLEARED** (remains cleared; no regression)                                                               |
 
 ---
 
 ## Console errors and warnings
 
 **At page load (before any interaction):**
+
 - 0 errors
 - 0 warnings
 
 **After "show me snowboards" search (8 cards rendered):**
+
 - 0 errors (previously 16 `[h2:error:ShopifyAnalytics]` about `variantTitle`)
 - 0 warnings
 - 0 React hydration warnings
 - 0 `validateDOMNesting` warnings
 
 **After add-to-cart (cart summary rendered):**
+
 - 0 errors (previously 1 `validateDOMNesting` about `<div>` inside `<p>`)
 - 0 warnings
 
 **After empty-state query "asdfqwerty12345":**
+
 - 0 errors
 - 0 warnings
 
@@ -143,6 +149,7 @@ npm run test:unit
 ```
 
 Suites verified:
+
 - `normalizeSearchCatalogMoney` (2 tests) — PASS
 - `normalizeProductDetailsMoney` (2 tests) — PASS
 - `normalizeCatalogProduct — vendor field truthy` (3 tests incl. negative-pair) — PASS

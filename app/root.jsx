@@ -17,14 +17,14 @@ import {
 } from '@shopify/hydrogen';
 import invariant from 'tiny-invariant';
 
+import {DEFAULT_LOCALE, parseMenu} from './lib/utils';
+
 import {PageLayout} from '~/components/PageLayout';
 import {GenericError} from '~/components/GenericError';
 import {NotFound} from '~/components/NotFound';
 import favicon from '~/assets/favicon.svg';
 import {seoPayload} from '~/lib/seo.server';
 import styles from '~/styles/app.css?url';
-
-import {DEFAULT_LOCALE, parseMenu} from './lib/utils';
 
 // This is important to avoid re-fetching root queries on sub-navigations
 /**
@@ -195,11 +195,9 @@ export function ErrorBoundary({error}) {
   const routeError = useRouteError();
   const isRouteError = isRouteErrorResponse(routeError);
 
-  let title = 'Error';
   let pageType = 'page';
 
   if (isRouteError) {
-    title = 'Not found';
     if (routeError.status === 404) pageType = routeError.data || pageType;
   }
 

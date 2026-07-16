@@ -38,7 +38,7 @@ change.
 
 ## 2. The exact change (per site)
 
-### Design: gate the CTA copy on the *same* value the frontend gates the link on
+### Design: gate the CTA copy on the _same_ value the frontend gates the link on
 
 The frontend renders the link only when `cart.checkoutUrl` is truthy (`ChatAssistant.jsx:345`). To make
 text and link agree in every state, the route must derive the reply's CTA copy from the **same**
@@ -293,12 +293,12 @@ mechanism here would be scope creep and is explicitly out of bounds.
 
 ## 4. Affected files and modules
 
-| File | Change |
-| :--- | :--- |
-| `app/lib/assistant-reply.js` | **New.** Pure `composeAddReply({checkoutUrl, cartReset})` helper. |
-| `app/lib/assistant-reply.test.js` | **New.** Node `--test` unit tests for the helper. |
+| File                                     | Change                                                                                                                                                                |
+| :--------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/lib/assistant-reply.js`             | **New.** Pure `composeAddReply({checkoutUrl, cartReset})` helper.                                                                                                     |
+| `app/lib/assistant-reply.test.js`        | **New.** Node `--test` unit tests for the helper.                                                                                                                     |
 | `app/routes/($locale).api.assistant.jsx` | Import helper; remove line-175 `const reply`; rewrite the four `add`-intent return sites to derive reply copy and `cart.checkoutUrl` from one resolved `checkoutUrl`. |
-| `package.json` | Add `app/lib/assistant-reply.test.js` to the existing `test:unit` script's file list. |
+| `package.json`                           | Add `app/lib/assistant-reply.test.js` to the existing `test:unit` script's file list.                                                                                 |
 
 Not touched: `ChatAssistant.jsx` (gating already correct), `mcp-normalize.js`, `mcp.server.js`, any
 `create_checkout`/cart logic, generated types, `.env`. No `.tsx` conversion. Files stay `.jsx` with
@@ -416,7 +416,7 @@ Run in order; all must pass before the fix is declared done:
    a. Add `import {composeAddReply} from '~/lib/assistant-reply';` with the other `~/lib` imports.
    b. Remove the `const reply = 'Added to your assistant cart — checkout here.';` at line 175.
    c. Rewrite the primary truthy-URL return and fallback return per §2b (derive one `checkoutUrl` local
-      in the fallback; feed both `reply` and `cart.checkoutUrl`).
+   in the fallback; feed both `reply` and `cart.checkoutUrl`).
    d. Rewrite the stale-cart retry truthy-URL return and fallback return per §2b with `cartReset: true`.
 5. Pre-save audit (project directive): no leftover unused `reply` variable, no duplicate exports, no
    unresolved imports. Confirm `ChatAssistant.jsx` is **not** modified.
@@ -428,23 +428,23 @@ Run in order; all must pass before the fix is declared done:
 
 ## 10. Ambiguity Log (open questions with proposed resolutions)
 
-1. **Exact fallback copy.** *Resolved (proposed):* primary
+1. **Exact fallback copy.** _Resolved (proposed):_ primary
    `"Added to your assistant cart — I couldn't start checkout just now, but it's saved."`; retry
    `"Started a new cart and added the item — I couldn't start checkout just now, but it's saved."`
    Justification and tradeoff in §3. If the operator prefers a shorter neutral drop
    ("Added to your assistant cart."), only the helper's fallback branch changes — no structural impact.
-2. **Helper vs. inline.** *Resolved (proposed):* shared pure helper at all four return sites (§5). Minimal
+2. **Helper vs. inline.** _Resolved (proposed):_ shared pure helper at all four return sites (§5). Minimal
    inline-at-fallback-only alternative documented; helper recommended for testability and single-source
    CTA invariant.
-3. **Helper location.** *Resolved (proposed):* `app/lib/assistant-reply.js` (matches the `lib` directory
+3. **Helper location.** _Resolved (proposed):_ `app/lib/assistant-reply.js` (matches the `lib` directory
    directive and keeps the helper unit-testable without importing a route file). Alternative — exporting
    the helper from the route file — is workable but mixes a route module into the test target list;
    `lib` is cleaner.
-4. **Retry affordance.** Should the no-URL fallback also offer a "try again" action? *Resolved (proposed):*
+4. **Retry affordance.** Should the no-URL fallback also offer a "try again" action? _Resolved (proposed):_
    **No** — out of scope for a Low-severity bug fix; the graceful note already sets honest expectations and
    the item is saved. A retry affordance would be a separate feature with its own plan.
 5. **Bug-report regression section.** The task asked to fill the bug report's "Regression risk areas."
-   This plan's write scope is `docs/plans/` only, so §6 records them here. *Proposed resolution:* an
+   This plan's write scope is `docs/plans/` only, so §6 records them here. _Proposed resolution:_ an
    operator/Coder mirrors §6 into `docs/bugs/assistant-checkout-null-dangling-cta.md` before QA.
 
 ---

@@ -5,6 +5,7 @@
 **Date:** 2026-05-18
 **Revision:** 2 (addresses `docs/reviews/fix-variant-clicks-return-404-review.md`)
 **References:**
+
 - Bug report: `docs/bugs/variant-clicks-return-404.md`
 - Investigation: `docs/bugs/variant-clicks-return-404-investigation.md`
 - Review: `docs/reviews/fix-variant-clicks-return-404-review.md`
@@ -176,11 +177,13 @@ All checks must pass before declaring the bug fixed. Record evidence in `docs/pl
 2. **Build passes cleanly.** Run `npm run build`. Must (a) exit zero, **and** (b) produce terminal output with zero codegen warnings of any kind. Capture full build output. This is the project's effective type-check (includes codegen). Per `CLAUDE.md`, no separate `typecheck` script exists.
 3. **Dev server starts cleanly.** Run `npm run dev`. Confirm no new warnings (compare against a known-clean baseline run if possible). Server reachable at `http://localhost:3000`.
 4. **Variant click navigates with query string (HTTP 200).** Open `http://localhost:3000/products/the-complete-snowboard`. Click a non-selected Color swatch (e.g. "Dawn"). Verify:
+
    - Browser URL becomes `http://localhost:3000/products/the-complete-snowboard?Color=Dawn` (query-param form, no path segment).
    - Network tab shows the loader request returning **HTTP 200**, not 404.
    - Dev server log shows `GET 200 loader /products/the-complete-snowboard` (with `?Color=Dawn` query) — **no** `GET 404 loader /products/the-complete-snowboard/Color=Dawn`.
 
    **4a. SEO canonical reflects the variant query string.** Still on the post-click page, open the browser's **View Source** (Cmd-Opt-U) and search for `<link rel="canonical"`. Confirm the `href` attribute contains `?Color=Dawn` (e.g. `href="...://.../products/the-complete-snowboard?Color=Dawn"`), not a path-segment form. This is a single-line view-source check. Capture the line in impl notes.
+
 5. **Variant data updates after click.** After step 4's click:
    - Price (`<Money>` output) updates to reflect the Dawn variant.
    - Product gallery / featured image updates to the Dawn variant's images.

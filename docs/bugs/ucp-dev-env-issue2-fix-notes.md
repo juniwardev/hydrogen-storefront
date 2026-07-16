@@ -82,12 +82,14 @@ npm run test:unit
 ℹ skipped 0
 ℹ todo 0
 ```
+
 (8 tests in `ucp-auth.server.test.js`: the original 6 plus new (e) and (f), all passing.)
 
 ```
 npm run build
 → exit 0, "✓ built in ~1-2s" for both the client and SSR bundles, dist/server/index.js produced.
 ```
+
 Note: the build emits a non-fatal `Bundle analyzer failed to analyze the bundle: TypeError: Invalid URL` / `Could not generate bundle analysis summary` warning. This is a pre-existing, unrelated issue in the bundle-analyzer plugin choking on a docblock comment elsewhere in `mcp.server.js` (not a file this task touched) — it does not affect the build exit code (confirmed `0`) or the codegen/type-validation gate.
 
 `npm run lint` (repo-wide) still reports 72 pre-existing errors in unrelated files (`ChatAssistant.jsx`, `AccountAddressBook.jsx`, `root.jsx`, various route/component files — import ordering and Prettier formatting issues). Confirmed via `git stash` that this is pre-existing baseline debt (75 errors before this task's changes even existed on disk, including the entire uncommitted `ucp-migration` feature) — not something introduced by this fix. None of the errors are in any file this task touched.
@@ -98,7 +100,7 @@ Note: the build emits a non-fatal `Bundle analyzer failed to analyze the bundle:
 
 Ran `npm run dev` (port 3001; 3000 was in use). Confirmed the startup log lists all 8 env vars injected, including `DEV_STOREFRONT_PASSWORD` and `PUBLIC_UCP_AGENT_PROFILE_URL` (Issue #1 stays resolved).
 
-Sent a live `POST /api/assistant` with `intent=search&message=snowboard` via `curl` against the running dev server (which runs the *real* `app/routes/($locale).api.assistant.jsx` → `mcp.server.js` → `ucp-auth.server.js` code path inside the actual MiniOxygen/workerd sandbox, not a repro harness). The SSR response's `actionData` contained:
+Sent a live `POST /api/assistant` with `intent=search&message=snowboard` via `curl` against the running dev server (which runs the _real_ `app/routes/($locale).api.assistant.jsx` → `mcp.server.js` → `ucp-auth.server.js` code path inside the actual MiniOxygen/workerd sandbox, not a repro harness). The SSR response's `actionData` contained:
 
 ```json
 {"reply":"Found 8 products.","products":[{"id":"gid://shopify/Product/9356160729308","title":"The Complete Snowboard", ... "priceRange":{"min":{"amount":"699.95","currencyCode":"USD"}}, "image":{"url":"https://cdn.shopify.com/...", "altText":"..."}, "firstVariantId":"gid://shopify/ProductVariant/50239737331932", ...}, ... 7 more products]}

@@ -340,7 +340,9 @@ export default function SortMenu() {
           <Menu.Item key={item.label}>
             {() => (
               <Link
-                className={`block text-sm pb-2 px-3 ${activeItem?.key === item.key ? 'font-bold' : 'font-normal'}`}
+                className={`block text-sm pb-2 px-3 ${
+                  activeItem?.key === item.key ? 'font-bold' : 'font-normal'
+                }`}
                 to={getSortLink(item.key, params, location)}
               >
                 {item.label}

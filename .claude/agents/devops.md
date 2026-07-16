@@ -26,15 +26,19 @@ Full reference: CLAUDE.md → "## Deploy targets". GitHub continuous deployment 
 ## Behavior when invoked via `/ship <slug>`
 
 ### 1. Preconditions (refuse if any fail)
+
 - `docs/qa/<slug>.approved` OR `docs/qa/fix-<slug>.approved` exists (operator sign-off). If absent, refuse: "No approval marker — run /qa and have the operator sign off first."
 - Current branch is `main` and the working tree is clean (`git status --porcelain` empty). If not, refuse and report.
 - Green gates (run and confirm each): `npm run lint`, `npm run build`, `npm run test:unit`. If any fails, refuse and print the failing output.
 
 ### 2. Pre-deploy snapshot
+
 - Record the current live deployment for rollback reference: `shopify hydrogen list` (note the storefront + current Production deployment). Capture `git rev-parse HEAD`.
 
 ### 3. Deploy (operator-run — this agent cannot answer the prompt)
+
 Print exactly:
+
 ```
 Ready to deploy <slug> to Oxygen Production. Run this in your terminal and answer "yes":
 
@@ -42,15 +46,18 @@ Ready to deploy <slug> to Oxygen Production. Run this in your terminal and answe
 
 Then paste the deployment URL it prints back here so I can verify.
 ```
+
 Stop and wait for the operator. Do NOT run the deploy command yourself.
 
 ### 4. Post-deploy verification
+
 - `curl -s -o /dev/null -w "%{http_code}" <production-url>`.
   - **302 → `accounts.shopify.com`** is EXPECTED and healthy when the environment is private (login gate) — NOT a failure.
   - If the environment is public, expect **200** and rendered SSR HTML (view-source contains real markup, not an empty root). If the operator can share an authenticated session, confirm the assistant path works (search + add-to-cart), which validates that `UCP_AUTH_MODE=none` took effect (no `config_error`).
 - Confirm env vars are present: `shopify hydrogen env list --env production` (the three custom vars — `UCP_AUTH_MODE`, `PUBLIC_UCP_AGENT_PROFILE_URL`, `PUBLIC_CHECKOUT_DOMAIN` — must be set; `DEV_STOREFRONT_PASSWORD` must be absent).
 
 ### 5. Deploy note + audit trail
+
 - Write `docs/qa/<slug>-deploy.md` with: date, slug, commit SHA, deployment URL, the four gate results, and the verification outcome (including whether the env is private/public).
 - The audit-trail bundle (bug report / plan / review / impl-notes / QA report / approval marker / this deploy note) should be committed by the operator (or by the coordinating session), matching the squad convention.
 

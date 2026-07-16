@@ -19,6 +19,7 @@ Revision 2 addresses all three required changes substantively, not cosmetically.
 ### Required Change 1 — Observability — **RESOLVED**
 
 Evidence:
+
 - The existing asymmetry the change targets is real. `http_error` logs server-side at `mcp.server.js:173` (`[mcp] http_error status=${res.status} tool=${name}`) and `rpc_error` at `:190` (`[mcp] rpc_error tool=${name} code=${data.error?.code}`), each with `// eslint-disable-line no-console`. The `config_error` throws at `:107–112` and `:148–150` (`password_gate_persists_after_remint`) log **nothing** — confirmed. So the "four indistinguishable misconfigurations" problem was genuine.
 - `mapMcpError` at `($locale).api.assistant.jsx:339–343` maps every `config_error` to the single string `"The shopping assistant is not configured."` — confirmed. The old §10.6 (verify by browser message) was therefore non-executable.
 - §4.1 specifies `console.error(`[mcp] config_error reason=<token> tool=${name}`)` before each throw, in the **same format and same `eslint-disable-line no-console` discipline** as lines 173/190. G4-honored: coarse category + reason token + tool name, no password/cookie/query/payload. Consistent with the existing pattern and the no-secret rule.
@@ -29,16 +30,18 @@ Evidence:
 ### Required Change 2 — Misleading hint — **RESOLVED**
 
 Evidence:
+
 - The proposed hint (§4, lines 121–124; §9.2 step 2) leads with `Set UCP_AUTH_MODE=none for a public (password-disabled) storefront`, then the dev password, then the Phase-2 signer. For the real target — the **public** `ashford-quantum` store — leading with `none` is the correct primary remedy; the pre-Revision hint's "set a password" would have mis-steered the operator to configure something the store does not need.
 - Applied consistently: §3 default rationale (line 100), §4 design + mermaid node E1 (line 132), §5 affected-files row, §6 API-changes bullet (line 204), §9.2 checklist (line 281), §10.6(b) (line 313). I found no lingering spot that still steers the operator to set a password first. The retained `DEV_STOREFRONT_PASSWORD` remedy is now correctly positioned as the secondary (password-gated-store) case.
 
 ### Required Change 3 — AL-2 User-Agent claim — **RESOLVED**
 
 Evidence:
+
 - Wording is actually downgraded, not still asserted. §8 risk bullet (line 251): "not confirmed," "hypothesis." AL-2 (line 262): "treat necessity as a hypothesis," "precautionary belt-and-suspenders, not a proven requirement." §4 (line 114) and §4.1 call the UA "precautionary." New AL-7 (line 267) records the open question and a resolution path. No residual "firm requirement / confirmed" language for the cookieless `none` case.
 - The cited counter-evidence is real. `mcp.server.js:124–140` builds the dev-cookie MCP POST headers with only `Content-Type` and `Cookie` — **no `User-Agent`** — confirmed, and the module header documents that POST as probe-confirmed 200. So "a UA-less `/api/ucp/mcp` POST always 403s" is correctly treated as unproven for that endpoint. The distinguisher the plan names (the working case carries `_shopify_essential`, the `none` case is cookieless) is stated as inference, which is accurate. Note the `/password`-leg 403 root cause remains genuinely confirmed at `const.js:16–24` — the plan correctly keeps that confirmed while scoping the downgrade to the MCP POST only.
 - §10.4a specifies a real probe: run `none` against `ashford-quantum` with the UA (expect 200), then a one-off cookieless POST without the UA (record 200 vs 403), note in impl-notes, resolve AL-7. This is an actual evidence-gathering step, not a gesture.
-- AL-7 is a fair statement of the open question, and it is non-blocking for implementation: the code ships **with** the UA regardless of the probe outcome (sending a UA is cheap and harmless); only the *strength of the justification* / the const's JSDoc wording changes. Leaving it open for the probe to settle is acceptable — it is a documentation-strength fork, not a code-behavior fork, so it does not gate `/implement`.
+- AL-7 is a fair statement of the open question, and it is non-blocking for implementation: the code ships **with** the UA regardless of the probe outcome (sending a UA is cheap and harmless); only the _strength of the justification_ / the const's JSDoc wording changes. Leaving it open for the probe to settle is acceptable — it is a documentation-strength fork, not a code-behavior fork, so it does not gate `/implement`.
 
 ---
 

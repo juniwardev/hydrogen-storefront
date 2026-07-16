@@ -14,7 +14,7 @@ in principle:
 
 1. Reach the `create_checkout` fallback path (route `:184–196`, only fires
    when the preceding cart's response has no usable `continue_url`).
-2. Have the UCP `create_checkout` tool return a *soft* business-outcome
+2. Have the UCP `create_checkout` tool return a _soft_ business-outcome
    response: `result.isError === false`, but `structuredContent` carries an
    error `messages[]` and no real checkout fields (no `id`, no
    `continue_url`) — the same shape the fixed `createCart`/`updateCart`

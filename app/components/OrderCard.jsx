@@ -1,4 +1,5 @@
 import {flattenConnection, Image} from '@shopify/hydrogen';
+
 import {Heading, Text} from '~/components/Text';
 import {Link} from '~/components/Link';
 import {statusMessage} from '~/lib/utils';
@@ -35,7 +36,9 @@ export function OrderCard({order}) {
           </div>
         )}
         <div
-          className={`flex-col justify-center text-left ${!lineItems[0].image && 'md:col-span-2'}`}
+          className={`flex-col justify-center text-left ${
+            !lineItems[0].image && 'md:col-span-2'
+          }`}
         >
           <Heading as="h3" format size="copy">
             {lineItems.length > 1

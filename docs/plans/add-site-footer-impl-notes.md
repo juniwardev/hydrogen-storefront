@@ -6,13 +6,13 @@ Date: 2026-05-18
 
 ## Files changed
 
-| File | Reason |
-|------|--------|
-| `app/lib/const.js` | Added `SOCIAL_LINKS` named export (array of platform/href/label objects for Instagram, Twitter/X, Facebook, TikTok) |
-| `app/components/Icon.jsx` | Added `IconInstagram`, `IconTwitterX`, `IconFacebook`, `IconTikTok` named exports following the existing icon pattern |
-| `app/routes/($locale).api.newsletter.jsx` | Created new Remix resource route — POST-only action with locale guard, honeypot check, email validation, and stub success response |
-| `app/components/Footer.jsx` | Created new three-column footer component with `FooterNavColumn`, `FooterSocialColumn`, `FooterNewsletterColumn`, CountrySelector row, and copyright row |
-| `app/components/PageLayout.jsx` | Removed inline `Footer`, `FooterMenu`, `FooterLink` functions; removed now-unused `Disclosure`, `IconCaret`, `CountrySelector`, `Section` imports; added `import {Footer} from '~/components/Footer'`; changed footer render guard from `{footerMenu && <Footer .../>}` to `<Footer menu={footerMenu} />` |
+| File                                      | Reason                                                                                                                                                                                                                                                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/lib/const.js`                        | Added `SOCIAL_LINKS` named export (array of platform/href/label objects for Instagram, Twitter/X, Facebook, TikTok)                                                                                                                                                                                       |
+| `app/components/Icon.jsx`                 | Added `IconInstagram`, `IconTwitterX`, `IconFacebook`, `IconTikTok` named exports following the existing icon pattern                                                                                                                                                                                     |
+| `app/routes/($locale).api.newsletter.jsx` | Created new Remix resource route — POST-only action with locale guard, honeypot check, email validation, and stub success response                                                                                                                                                                        |
+| `app/components/Footer.jsx`               | Created new three-column footer component with `FooterNavColumn`, `FooterSocialColumn`, `FooterNewsletterColumn`, CountrySelector row, and copyright row                                                                                                                                                  |
+| `app/components/PageLayout.jsx`           | Removed inline `Footer`, `FooterMenu`, `FooterLink` functions; removed now-unused `Disclosure`, `IconCaret`, `CountrySelector`, `Section` imports; added `import {Footer} from '~/components/Footer'`; changed footer render guard from `{footerMenu && <Footer .../>}` to `<Footer menu={footerMenu} />` |
 
 ## Open questions resolved
 
@@ -61,6 +61,7 @@ One new `import/order` error appeared on `PageLayout.jsx` line 4 (mixing React c
 ## Build result
 
 `npm run build` completed successfully:
+
 - Codegen pass ran without errors (no GraphQL fragment changes, so `storefrontapi.generated.d.ts` was not modified — expected)
 - Client bundle built: 387 modules transformed, no TypeScript/JSDoc errors
 - SSR bundle built: 370 modules transformed, no errors

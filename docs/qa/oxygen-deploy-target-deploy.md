@@ -23,11 +23,11 @@ This is the first production deployment of the Hydrogen storefront to Oxygen, an
 
 ## Pre-deploy gates (on `main` @ `83326dc`)
 
-| Gate | Result |
-| :--- | :--- |
-| `npm run test:unit` | 67/67 pass |
-| `npm run lint` | clean on touched files (72 pre-existing baseline errors in untouched files, unchanged) |
-| `npm run build` | exit 0 (pre-existing bundle-analyzer "Invalid URL" notice only) |
+| Gate                | Result                                                                                 |
+| :------------------ | :------------------------------------------------------------------------------------- |
+| `npm run test:unit` | 67/67 pass                                                                             |
+| `npm run lint`      | clean on touched files (72 pre-existing baseline errors in untouched files, unchanged) |
+| `npm run build`     | exit 0 (pre-existing bundle-analyzer "Invalid URL" notice only)                        |
 
 ## Deploy procedure used
 
@@ -42,13 +42,13 @@ Run interactively by the operator (the CLI's `Continue?` prompt has no non-inter
 
 ## Post-deploy verification (live, anonymous, Production public)
 
-| Check | Result |
-| :--- | :--- |
-| Homepage `GET /` | `200`, SSR renders real catalog data |
-| `GET /collections` | `200` |
-| `POST /api/assistant intent=search` | real products returned, **no `config_error`** → `UCP_AUTH_MODE=none` active in prod |
-| `POST /api/assistant intent=add` | **no `tool_error`**, real cart created: `https://ashford-quantum.myshopify.com/cart/c/hWNEX73…` |
-| Reply copy (dangling-CTA fix) | "Added to your assistant cart — checkout here." (with a real URL behind it) |
+| Check                               | Result                                                                                          |
+| :---------------------------------- | :---------------------------------------------------------------------------------------------- |
+| Homepage `GET /`                    | `200`, SSR renders real catalog data                                                            |
+| `GET /collections`                  | `200`                                                                                           |
+| `POST /api/assistant intent=search` | real products returned, **no `config_error`** → `UCP_AUTH_MODE=none` active in prod             |
+| `POST /api/assistant intent=add`    | **no `tool_error`**, real cart created: `https://ashford-quantum.myshopify.com/cart/c/hWNEX73…` |
+| Reply copy (dangling-CTA fix)       | "Added to your assistant cart — checkout here." (with a real URL behind it)                     |
 
 The add-to-cart call exercised the full shipped stack — no-auth mode + the flat cart-payload fix + the checkout-CTA copy fix — and produced a real Shopify cart on the live deployment.
 

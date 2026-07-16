@@ -42,9 +42,12 @@ I traced the route's null-cart handling to decide firmly whether the guard is ne
 whether the investigation's simpler `payload ?? null` would do.
 
 `app/routes/($locale).api.assistant.jsx:163–173`:
+
 ```js
 const cart = result.cart ? normalizeCart(result.cart) : null;
-if (!cart) { /* return tool_error */ }
+if (!cart) {
+  /* return tool_error */
+}
 ```
 
 Key finding: with **bare `payload ?? null`**, the route's defensive `if (!cart)` branch (line 164)
@@ -99,7 +102,7 @@ does not fix only one. Complete.
   `createCheckout` code must not change and the plan does not change it.
 - normalizeCart JSDoc (§5.5, `mcp-normalize.js:191`, `:203`) — corrected.
 - `@returns` on createCart/updateCart (`:353`, `:410`) is `{cart: object|null, messages: object[]}`,
-  which remains accurate (the return *shape* is unchanged; only which value populates `cart` on
+  which remains accurate (the return _shape_ is unchanged; only which value populates `cart` on
   success changes). No `@returns` edit is needed and the plan correctly does not touch it.
 
 ### 6. Hygiene gates

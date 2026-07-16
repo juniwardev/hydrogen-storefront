@@ -6,7 +6,7 @@ import {getSeoMeta} from '@shopify/hydrogen';
 import {Hero} from '~/components/Hero';
 import {FeaturedCollections} from '~/components/FeaturedCollections';
 import {ProductSwimlane} from '~/components/ProductSwimlane';
-import {MEDIA_FRAGMENT, PRODUCT_ITEM_FRAGMENT, PRODUCT_CARD_FRAGMENT} from '~/data/fragments';
+import {PRODUCT_CARD_FRAGMENT} from '~/data/fragments';
 import {getHeroPlaceholder} from '~/lib/placeholders';
 import {seoPayload} from '~/lib/seo.server';
 import {routeHeaders} from '~/data/cache';
@@ -151,11 +151,13 @@ function loadDeferredData({context}) {
  * @param {Class<loader>>}
  */
 export const meta = ({matches}) => {
-  const seoMatches = matches.map((match) => {
-    if (!match.data) return null;
-    if (!match.data.seo) return null;
-    return match.data.seo;
-  }).filter(Boolean);
+  const seoMatches = matches
+    .map((match) => {
+      if (!match.data) return null;
+      if (!match.data.seo) return null;
+      return match.data.seo;
+    })
+    .filter(Boolean);
   return getSeoMeta(...seoMatches);
 };
 
@@ -340,4 +342,3 @@ export const FEATURED_COLLECTIONS_QUERY = `#graphql
 /** @typedef {import('@shopify/remix-oxygen').MetaArgs} MetaArgs */
 /** @typedef {import('@shopify/remix-oxygen').LoaderFunctionArgs} LoaderFunctionArgs */
 /** @typedef {ReturnType<typeof useLoaderData<typeof loader>>} LoaderReturnData */
-

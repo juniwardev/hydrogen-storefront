@@ -46,14 +46,14 @@ If you find yourself wanting a script that doesn't exist (e.g., `typecheck`, `co
 
 **Target: Shopify Oxygen** (native Hydrogen hosting). Configured 2026-07-15.
 
-| Field | Value |
-| :--- | :--- |
-| Platform | Shopify Oxygen |
-| Store | `ashford-quantum.myshopify.com` (Ashford Quantum Solutions) |
-| Hydrogen storefront | `ashford-quantum-hydrogen` (`gid://shopify/HydrogenStorefront/1000158766`) |
-| Environment | **Production** (handle `production`, tracks branch `main`) |
-| Production URL | `https://ashford-quantum-hydrogen-bb6261bdb9884381da1b.o2.myshopify.dev` (private by default — see privacy note) |
-| Deploy command | `npm run deploy` → `shopify hydrogen deploy --env production` |
+| Field               | Value                                                                                                            |
+| :------------------ | :--------------------------------------------------------------------------------------------------------------- |
+| Platform            | Shopify Oxygen                                                                                                   |
+| Store               | `ashford-quantum.myshopify.com` (Ashford Quantum Solutions)                                                      |
+| Hydrogen storefront | `ashford-quantum-hydrogen` (`gid://shopify/HydrogenStorefront/1000158766`)                                       |
+| Environment         | **Production** (handle `production`, tracks branch `main`)                                                       |
+| Production URL      | `https://ashford-quantum-hydrogen-bb6261bdb9884381da1b.o2.myshopify.dev` (private by default — see privacy note) |
+| Deploy command      | `npm run deploy` → `shopify hydrogen deploy --env production`                                                    |
 
 ### Deploy procedure
 
@@ -172,14 +172,14 @@ Audit-trail artifacts live in `docs/bugs/`, `docs/plans/`, `docs/reviews/`, `doc
 
 Local development requires the following variables in `.env` (or `.env.local`). These are loaded automatically into MiniOxygen during `npm run dev`:
 
-| Variable | Purpose |
-| :--- | :--- |
-| `SESSION_SECRET` | Encrypts session cookies. |
-| `PUBLIC_STOREFRONT_API_TOKEN` | Public access token for the Storefront API. |
-| `PUBLIC_STORE_DOMAIN` | The `myshopify.com` domain of the Shopify store. |
-| `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` | Client ID for the Customer Account API. |
-| `PUBLIC_CHECKOUT_DOMAIN` | The domain used for the checkout process. |
-| `SHOP_ID` | The unique identifier for the Shopify shop. |
+| Variable                                | Purpose                                          |
+| :-------------------------------------- | :----------------------------------------------- |
+| `SESSION_SECRET`                        | Encrypts session cookies.                        |
+| `PUBLIC_STOREFRONT_API_TOKEN`           | Public access token for the Storefront API.      |
+| `PUBLIC_STORE_DOMAIN`                   | The `myshopify.com` domain of the Shopify store. |
+| `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID` | Client ID for the Customer Account API.          |
+| `PUBLIC_CHECKOUT_DOMAIN`                | The domain used for the checkout process.        |
+| `SHOP_ID`                               | The unique identifier for the Shopify shop.      |
 
 The `.env` and `.env.local` files are gitignored and contain secrets. Never commit them. Never edit them as part of a feature plan — environment changes are an operator concern.
 

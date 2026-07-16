@@ -1,5 +1,6 @@
 import {useLocation, useRouteLoaderData} from '@remix-run/react';
 import typographicBase from 'typographic-base';
+
 import {countries} from '~/data/countries';
 
 /**
@@ -214,7 +215,9 @@ export const INPUT_STYLE_CLASSES =
  * @param {string | null} [isError]
  */
 export const getInputStyleClasses = (isError) => {
-  return `${INPUT_STYLE_CLASSES} ${isError ? 'border-red-500' : 'border-primary/20'}`;
+  return `${INPUT_STYLE_CLASSES} ${
+    isError ? 'border-red-500' : 'border-primary/20'
+  }`;
 };
 
 /**
@@ -268,7 +271,9 @@ export function usePrefixPathWithLocale(path) {
   const rootData = useRouteLoaderData('root');
   const selectedLocale = rootData?.selectedLocale ?? DEFAULT_LOCALE;
 
-  return `${selectedLocale.pathPrefix}${path.startsWith('/') ? path : '/' + path}`;
+  return `${selectedLocale.pathPrefix}${
+    path.startsWith('/') ? path : '/' + path
+  }`;
 }
 
 export function useIsHomePath() {

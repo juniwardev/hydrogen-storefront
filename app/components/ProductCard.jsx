@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import {flattenConnection, Image, Money, useMoney} from '@shopify/hydrogen';
+
 import {Text} from '~/components/Text';
 import {Link} from '~/components/Link';
 import {Button} from '~/components/Button';

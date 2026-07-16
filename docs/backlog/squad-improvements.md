@@ -1,4 +1,3 @@
-
 ## QA agent: prefer relative paths in shell commands
 
 **Discovered during:** fix-variant-clicks-return-404 QA run.
@@ -14,6 +13,7 @@
 ## Coder agent's missing auto-commits on Hydrogen project
 
 **Pattern observed (3 consecutive Hydrogen shipments):**
+
 - fix-codegen-selectedoptions-not-defined — Coder did not commit code
 - fix-variant-clicks-return-404 — Coder did not commit code
 - add-site-footer — Coder did not commit code
@@ -27,6 +27,7 @@ theme-evolution-os2 (Liquid) project, where Coder DID auto-commit during
 the bug-fix workflow. Both projects use the same global Coder agent file.
 
 **Hypotheses:**
+
 - Project-specific context interaction (something about Hydrogen's per-file
   scope makes Coder less commit-prone).
 - Tools availability difference (Bash tool behavior, or git config inside the

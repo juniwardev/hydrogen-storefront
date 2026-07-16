@@ -9,8 +9,8 @@
 
 ## Files changed
 
-| File | Reason |
-|---|---|
+| File                                               | Reason                                                                          |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `app/routes/($locale).products.$productHandle.jsx` | Two `to`-prop edits at the two `<Link>` call sites that pass `variantUriQuery`. |
 
 No other files were modified.
@@ -22,6 +22,7 @@ No other files were modified.
 ### Change 1 — Listbox option `<Link>` (line 274)
 
 Before:
+
 ```jsx
 <Link
   to={value.variantUriQuery}
@@ -30,6 +31,7 @@ Before:
 ```
 
 After:
+
 ```jsx
 <Link
   to={{search: value.variantUriQuery}}
@@ -40,6 +42,7 @@ After:
 ### Change 2 — Swatch grid `<Link>` (line 299)
 
 Before:
+
 ```jsx
 <Link
   key={name}
@@ -48,6 +51,7 @@ Before:
 ```
 
 After:
+
 ```jsx
 <Link
   key={name}
@@ -86,6 +90,7 @@ Ran `npm run build`.
 **Codegen warnings:** Zero. The build output contains no codegen warnings of any kind. The build ran the `--codegen` flag (via `shopify hydrogen build --codegen`) and completed without any schema or fragment-level warnings.
 
 Relevant build output summary:
+
 - Client bundle: 384 modules transformed, built in 2.49s
 - SSR bundle: 368 modules transformed, built in 1.84s
 - `dist/client/assets/(_locale).products._productHandle-BOXjzZbZ.js` — 22.71 kB (gzip: 8.34 kB), confirming the route bundle was included and compiled
@@ -109,6 +114,7 @@ npm run dev
 ## Deviations from the plan
 
 None. The implementation followed the plan exactly:
+
 - Two single-prop edits, one file, no other files touched.
 - `preserveControl` prop was left in place as directed.
 - Lint baseline captured before edits (73 errors); post-fix lint equals baseline (73 errors).

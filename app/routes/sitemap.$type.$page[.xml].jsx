@@ -1,4 +1,5 @@
 import {getSitemap} from 'app/lib/sitemap';
+
 import {countries} from '~/data/countries';
 
 const locales = Object.keys(countries).filter((k) => k !== 'default');

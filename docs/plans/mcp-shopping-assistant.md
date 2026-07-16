@@ -30,13 +30,13 @@ This section is the spine of the plan. As of revision 3, the load-bearing shapes
 
 ### 0.1 Endpoint (PROBED — single endpoint, no auth, no agent profile)
 
-| Surface | Endpoint | Tools | Auth |
-| :-- | :-- | :-- | :-- |
+| Surface                 | Endpoint                               | Tools                                                                                               | Auth                              |
+| :---------------------- | :------------------------------------- | :-------------------------------------------------------------------------------------------------- | :-------------------------------- |
 | Standard Storefront MCP | `https://{shop}.myshopify.com/api/mcp` | `search_catalog`, `get_cart`, `update_cart`, `search_shop_policies_and_faqs`, `get_product_details` | none (no token, no agent profile) |
 
 - **PROBED (probe 2)** — `tools/list` on `https://theme-evolution-os2-hydrogen.myshopify.com/api/mcp` returns HTTP 200 and lists exactly: `search_catalog`, `get_cart`, `update_cart`, `search_shop_policies_and_faqs`, `get_product_details`. **Every tool the feature needs lives on this one endpoint.** No agent profile and no storefront token are required for these calls.
 - **PROBED (probe 1)** — `https://theme-evolution-os2-hydrogen.myshopify.com/api/ucp/mcp` returns `302` → `/password` regardless of headers or request body. The store's storefront password gates the UCP endpoint. **The UCP endpoint is OUT of scope for this session.** It is documented as a Next step (migrate when the password is removed or a path exception is configured).
-- **PROBED (probe 2)** — Each `search_catalog`/`update_cart` response carries a DEPRECATION NOTICE in `result.content[1].text`: *"This tool is served by the Storefront MCP server at /api/mcp and will no longer be accessible after August 31, 2026. Migrate to the UCP-conforming Cart MCP tools at /api/ucp/mcp."* The feature **ignores `content[1].text`** (parses only `content[0].text`). This deprecation is an **accepted, documented trade-off** the operator chose for this session (see OQ-3 and Next steps).
+- **PROBED (probe 2)** — Each `search_catalog`/`update_cart` response carries a DEPRECATION NOTICE in `result.content[1].text`: _"This tool is served by the Storefront MCP server at /api/mcp and will no longer be accessible after August 31, 2026. Migrate to the UCP-conforming Cart MCP tools at /api/ucp/mcp."_ The feature **ignores `content[1].text`** (parses only `content[0].text`). This deprecation is an **accepted, documented trade-off** the operator chose for this session (see OQ-3 and Next steps).
 
 ### 0.2 `search_catalog` (PROBED — probe 3)
 
@@ -53,29 +53,29 @@ This section is the spine of the plan. As of revision 3, the load-bearing shapes
 
 ```jsonc
 {
-  "id": "gid://shopify/Product/9356161155292",      // PROBED: real Product GID (not a UPID gid://shopify/p/…)
+  "id": "gid://shopify/Product/9356161155292", // PROBED: real Product GID (not a UPID gid://shopify/p/…)
   "title": "The Inventory Not Tracked Snowboard",
-  "description": { "html": "…" },
+  "description": {"html": "…"},
   "price_range": {
-    "min": { "amount": 94995, "currency": "USD" },   // PROBED: INTEGER MINOR UNITS + `currency` (not currencyCode) → $949.95
-    "max": { "amount": 94995, "currency": "USD" }
+    "min": {"amount": 94995, "currency": "USD"}, // PROBED: INTEGER MINOR UNITS + `currency` (not currencyCode) → $949.95
+    "max": {"amount": 94995, "currency": "USD"}
   },
   "variants": [
     {
-      "id": "gid://shopify/ProductVariant/50239738609884",  // PROBED: present → firstVariantId for add-to-cart + Analytics
+      "id": "gid://shopify/ProductVariant/50239738609884", // PROBED: present → firstVariantId for add-to-cart + Analytics
       "title": "Default Title",
-      "price": { "amount": 94995, "currency": "USD" },
-      "availability": { "available": true },
-      "options": [{ "name": "Title", "label": "Default Title" }],
-      "media": [{ "type": "image", "url": "https://cdn.shopify.com/s/files/…" }]  // PROBED: variant media has NO alt_text
+      "price": {"amount": 94995, "currency": "USD"},
+      "availability": {"available": true},
+      "options": [{"name": "Title", "label": "Default Title"}],
+      "media": [{"type": "image", "url": "https://cdn.shopify.com/s/files/…"}] // PROBED: variant media has NO alt_text
     }
   ],
-  "options": [{ "name": "Title", "values": [{ "label": "Default Title" }] }],
+  "options": [{"name": "Title", "values": [{"label": "Default Title"}]}],
   "media": [
     {
       "type": "image",
-      "url": "https://cdn.shopify.com/s/files/…",      // PROBED: host cdn.shopify.com (CSP-safe, G3 resolved)
-      "alt_text": "Top and bottom view of a snowboard…"  // PROBED: field is `alt_text` (NOT altText); NO width/height
+      "url": "https://cdn.shopify.com/s/files/…", // PROBED: host cdn.shopify.com (CSP-safe, G3 resolved)
+      "alt_text": "Top and bottom view of a snowboard…" // PROBED: field is `alt_text` (NOT altText); NO width/height
     }
   ],
   "tags": ["Accessory", "Sport", "Winter"]
@@ -96,21 +96,21 @@ This section is the spine of the plan. As of revision 3, the load-bearing shapes
   "product_id": "gid://shopify/Product/9356161155292",
   "title": "The Inventory Not Tracked Snowboard",
   "description": "Engineered with sustainable Graphene-infused…",
-  "url": null,                                         // PROBED: null — no PDP destination
+  "url": null, // PROBED: null — no PDP destination
   "image_url": "https://cdn.shopify.com/s/files/…",
-  "images": [{ "url": "https://cdn.shopify.com/s/files/…", "alt_text": "…" }],  // PROBED: images[] (not media[]), alt_text, no width/height
-  "options": [{ "name": "Title", "values": ["Default Title"] }],
+  "images": [{"url": "https://cdn.shopify.com/s/files/…", "alt_text": "…"}], // PROBED: images[] (not media[]), alt_text, no width/height
+  "options": [{"name": "Title", "values": ["Default Title"]}],
   "total_variants": 1,
-  "price_range": { "min": "949.95", "max": "949.95", "currency": "USD" },       // PROBED: DECIMAL STRINGS + `currency`
+  "price_range": {"min": "949.95", "max": "949.95", "currency": "USD"}, // PROBED: DECIMAL STRINGS + `currency`
   "selectedOrFirstAvailableVariant": {
-    "variant_id": "gid://shopify/ProductVariant/50239738609884",                // PROBED: variant_id (not variants[].id)
+    "variant_id": "gid://shopify/ProductVariant/50239738609884", // PROBED: variant_id (not variants[].id)
     "title": "Default Title",
-    "price": "949.95",                                 // PROBED: DECIMAL STRING
+    "price": "949.95", // PROBED: DECIMAL STRING
     "currency": "USD",
     "image_url": "…",
     "image_alt_text": "…",
     "available": true,
-    "selected_options": [{ "name": "Title", "value": "Default Title" }]
+    "selected_options": [{"name": "Title", "value": "Default Title"}]
   }
 }
 ```
@@ -124,13 +124,13 @@ This section is the spine of the plan. As of revision 3, the load-bearing shapes
 The standard `/api/mcp` `update_cart`/`get_cart` are the **only** accessible cart surface this session (the UCP Cart MCP at `/api/ucp/mcp` is blocked, §0.1). There is no longer a surface-choice decision; the former surface-B (UCP PUT-replace) design is a Next step only.
 
 - **`update_cart` request** (PROBED — probe 5): `params.name = "update_cart"`, `params.arguments = { cart_id?, add_items: [{ product_variant_id: "gid://shopify/ProductVariant/…", quantity }] }`.
-  - **PROBED — the line-item field is `product_variant_id`, NOT `merchandise_id`.** Sending `merchandise_id` errors: *"object at `/add_items/0` is missing required properties: product_variant_id"* (AL-20 resolved).
+  - **PROBED — the line-item field is `product_variant_id`, NOT `merchandise_id`.** Sending `merchandise_id` errors: _"object at `/add_items/0` is missing required properties: product_variant_id"_ (AL-20 resolved).
   - **PROBED — `add_items` is the correct array key** (the `lines`-vs-`add_items` ambiguity is settled; it is `add_items`).
   - Omitting `cart_id` creates a fresh cart. `quantity: 0` removes an item.
 - **`update_cart` response** (PROBED — probe 5): `JSON.parse(result.content[0].text)` → `{ instructions, cart, errors }`. The `cart` object carries `id`, `lines[]`, `cost.total_amount` (decimal string + `currency`), `total_quantity`, and **`checkout_url`** (the handoff destination). `result.isError` is the success/failure flag.
 - **`get_cart`** returns the same `cart` envelope (incl. `checkout_url`).
 - **Stale/invalid `cart_id`** (PROBED — probe 6): does NOT auto-create. Two failure shapes:
-  - Invalid GID format → `isError: true`, message *"Invalid cart_id format…"*.
+  - Invalid GID format → `isError: true`, message _"Invalid cart_id format…"_.
   - Valid format but non-existent → `isError: true`, `errors: [{ field: ["cart_id"], message: "The specified cart does not exist." }]`.
   - The action must catch `isError: true` on a submitted `cart_id`, **clear the stored `cartId`**, and let the next `add` create a fresh cart (§5.4). The previous `cartCreated` auto-create-disambiguation is removed.
 - **Cart cost format:** decimal strings (`"949.95"`) + `currency` key — same path as `get_product_details`, NOT the `search_catalog` integer path (§5.3, AL-21).
@@ -266,7 +266,13 @@ function mcpEndpoint({storeDomain}) {
  * Parses result.content[0].text (stringified JSON) and honors result.isError.
  * `fetchImpl` is injectable so the 429 branch is unit-testable (§8.4).
  */
-async function callTool({endpoint, name, args, timeoutMs = DEFAULT_TIMEOUT_MS, fetchImpl = fetch}) {
+async function callTool({
+  endpoint,
+  name,
+  args,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  fetchImpl = fetch,
+}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -275,7 +281,9 @@ async function callTool({endpoint, name, args, timeoutMs = DEFAULT_TIMEOUT_MS, f
       headers: {'Content-Type': 'application/json'},
       signal: ctrl.signal,
       body: JSON.stringify({
-        jsonrpc: '2.0', method: 'tools/call', id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        id: 1,
         params: {name, arguments: args},
       }),
     });
@@ -372,21 +380,21 @@ The browser never sees raw MCP JSON. `mcp-normalize.js` maps the PROBED MCP shap
 ```ts
 // Conceptual shapes (expressed as JSDoc typedefs in mcp-normalize.js)
 AssistantProduct = {
-  id: string,                 // gid://shopify/Product/… (PROBED: real Product GID)
+  id: string, // gid://shopify/Product/… (PROBED: real Product GID)
   title: string,
-  descriptionHtml?: string,   // from description.html (catalog) — render sanitized or as text
-  priceRange: { min: Money, max: Money },
-  image?: { url: string, altText: string },   // PROBED: no width/height available from MCP
-  firstVariantId?: string,    // gid://shopify/ProductVariant/… for add-to-cart AND the <Analytics.ProductView> payload's variantId (AL-19)
+  descriptionHtml: string, // from description.html (catalog) — render sanitized or as text
+  priceRange: {min: Money, max: Money},
+  image: {url: string, altText: string}, // PROBED: no width/height available from MCP
+  firstVariantId: string, // gid://shopify/ProductVariant/… for add-to-cart AND the <Analytics.ProductView> payload's variantId (AL-19)
   available: boolean,
-}
-Money = { amount: string, currencyCode: string }   // <Money> shape: amount is DECIMAL string in MAJOR units
+};
+Money = {amount: string, currencyCode: string}; // <Money> shape: amount is DECIMAL string in MAJOR units
 AssistantCart = {
   id: string,
   totalAmount: Money,
-  lineCount: number,          // from cart.total_quantity / lines length
-  checkoutUrl?: string,       // PROBED: cart.checkout_url for handoff
-}
+  lineCount: number, // from cart.total_quantity / lines length
+  checkoutUrl: string, // PROBED: cart.checkout_url for handoff
+};
 // Action-level (not part of a product card): cartReset:boolean — true when a submitted cartId errored
 // (stale cart, PROBED probe 6) and the action cleared it + created a fresh cart, so the UI can flag it.
 ```
@@ -398,7 +406,7 @@ Mapping rules (load-bearing):
   - **`get_product_details`** (`price_range.min`, `selectedOrFirstAvailableVariant.price`): ALREADY a DECIMAL STRING (`"949.95"`). Pass through as-is (no division); just attach `currencyCode` from the sibling `currency`.
   - **Cart cost** (`cart.cost.total_amount.amount`, line `cost.total_amount.amount`): ALREADY a DECIMAL STRING + `currency`. Same as the detail path.
   - `normalizeCatalogProduct` uses the integer path; `normalizeProductDetail` and `normalizeCart` use the decimal-string path. The normalizer must NOT apply minor-unit division to the decimal-string sources (that would render "$94,995.00" for a $949.95 item — the inverse of the catalog bug). This is the single most error-prone mapping; unit-test both paths if time permits.
-- **Image (PROBED).** Map the MCP media to `{url, altText}` — field is **`alt_text`** (catalog product-level `media[].alt_text`; detail `images[].alt_text`). There is **no `width`/`height`** in any MCP media object. Render with Hydrogen `<Image src={url} ... />` in its external-URL form, OR a plain `<img loading="lazy" alt=…>` fallback — **without** passing fabricated `width`/`height`. Because dimensions are absent, prefer the `<img loading="lazy">` form (or `<Image>` with an explicit `aspectRatio` and CSS-controlled sizing) so layout is stable and SSR/client render agree (no hydration mismatch). Always provide a non-empty `altText` (fall back to product `title`). This honors the *spirit* of the project's "complete image payload" directive — which binds **GraphQL queries**, not MCP JSON — by always supplying a real URL + non-empty alt, without inventing dimensions the source does not provide. Media host is `cdn.shopify.com` (PROBED — within the default CSP `img-src` allowlist, so no CSP block; G3 resolved). Variant-level catalog media has no `alt_text` — use the product-level `media[].alt_text` or the title.
+- **Image (PROBED).** Map the MCP media to `{url, altText}` — field is **`alt_text`** (catalog product-level `media[].alt_text`; detail `images[].alt_text`). There is **no `width`/`height`** in any MCP media object. Render with Hydrogen `<Image src={url} ... />` in its external-URL form, OR a plain `<img loading="lazy" alt=…>` fallback — **without** passing fabricated `width`/`height`. Because dimensions are absent, prefer the `<img loading="lazy">` form (or `<Image>` with an explicit `aspectRatio` and CSS-controlled sizing) so layout is stable and SSR/client render agree (no hydration mismatch). Always provide a non-empty `altText` (fall back to product `title`). This honors the _spirit_ of the project's "complete image payload" directive — which binds **GraphQL queries**, not MCP JSON — by always supplying a real URL + non-empty alt, without inventing dimensions the source does not provide. Media host is `cdn.shopify.com` (PROBED — within the default CSP `img-src` allowlist, so no CSP block; G3 resolved). Variant-level catalog media has no `alt_text` — use the product-level `media[].alt_text` or the title.
 - **No handle / no PDP destination (PROBED).** Do NOT set or derive a `handle`/`url`. The view model carries no PDP field; the card omits the PDP link (§3.5).
 - **Anti-Stubbing.** If `products` is empty or a field is missing, do NOT substitute placeholder/fake values. Empty → render the friendly "No matches found" **empty state** (distinct from the error state, §3.5). Missing image → omit the image, keep the card. Errors → **error state**. Never `const products = []` to paper over a failed fetch, and never let a tool/RPC error collapse into the empty state.
 
@@ -669,7 +677,7 @@ This log captures every point during recon and design where docs were unclear, a
 
 - **Trigger:** Rendering product media with Hydrogen `<Image>` vs the project's "complete image payload" directive (§5.3).
 - **Ambiguity introduced by the pivot:** The PROBED media objects provide `url` + `alt_text` but **no `width`/`height`**. Hydrogen `<Image>` is built for dimensioned/aspect-ratio images (srcset). Passing a partial `data` object risks layout shift or a hydration mismatch, and the CLAUDE.md image directive (which mandates `id,url,altText,width,height`) cannot be literally satisfied from MCP JSON.
-- **Decision:** The image directive binds **GraphQL queries**, not MCP JSON. Honor its *spirit* by always supplying a real `cdn.shopify.com` URL + a non-empty `alt` (fallback to title), while NOT fabricating dimensions. Render via a plain `<img loading="lazy" alt=…>` fallback (or `<Image src aspectRatio>` with CSS-controlled sizing) so SSR and client render agree (no hydration mismatch) and no fabricated width/height enters the code. Documented reconciliation in §5.3; risk noted in §6.
+- **Decision:** The image directive binds **GraphQL queries**, not MCP JSON. Honor its _spirit_ by always supplying a real `cdn.shopify.com` URL + a non-empty `alt` (fallback to title), while NOT fabricating dimensions. Render via a plain `<img loading="lazy" alt=…>` fallback (or `<Image src aspectRatio>` with CSS-controlled sizing) so SSR and client render agree (no hydration mismatch) and no fabricated width/height enters the code. Documented reconciliation in §5.3; risk noted in §6.
 - **Confidence:** high (absence of dimensions probed).
 - **Verification path:** §8.2 no-hydration-warning + no-CSP-violation console check; §8.3 positive image assertion (real `cdn.shopify.com` `src`).
 

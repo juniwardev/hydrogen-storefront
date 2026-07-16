@@ -20,7 +20,7 @@ When no usable checkout URL can be produced, the assistant should say something 
 
 ## Actual behavior
 
-The reply renders a checkout CTA with an empty/undefined URL. This is a *lateral* UX state, not a regression introduced by the checkout guard fix — before that fix, the same path surfaced a bogus (junk) link; after it, the link is cleanly empty. Either way the user gets a dead-end CTA.
+The reply renders a checkout CTA with an empty/undefined URL. This is a _lateral_ UX state, not a regression introduced by the checkout guard fix — before that fix, the same path surfaced a bogus (junk) link; after it, the link is cleanly empty. Either way the user gets a dead-end CTA.
 
 ## Hypothesis
 

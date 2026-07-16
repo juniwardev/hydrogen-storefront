@@ -184,6 +184,7 @@ argument-hint: <slug>
 Use the `general` subagent to investigate the bug documented at `docs/bugs/$ARGUMENTS.md`.
 
 Confirm before invoking:
+
 1. The bug report file exists. If not, refuse and ask me to create one first.
 2. The bug report has filled-in "Steps to reproduce" and "Actual behavior" sections. If either is empty, refuse — there's nothing to investigate yet.
 
@@ -202,6 +203,7 @@ The General agent should:
 Do not propose a specific fix or modify any code. The investigation feeds into the Architect's plan, which is where the actual fix gets designed and reviewed.
 
 After completion, print:
+
 - Path to the investigation document
 - The root cause statement
 - Recommendation: proceed to /plan or do more investigation
@@ -410,12 +412,12 @@ DevOps captures pre-deploy snapshot, pushes to target theme, verifies storefront
 
 ## Quick reference cheat sheet
 
-| Bug Type | Tier | Process |
-|---|---|---|
-| Typo, color, link | 1 | Report → /implement → /qa → /ship |
-| Component-level bug | 2 | Report → /plan → /review-plan → /implement → /qa → /ship |
-| Mystery / complex | 3 | Report → /investigate → /plan → /review-plan → /implement → /qa → /ship |
-| Production-down emergency | 4 | Quick fix → manual deploy → write retrospective artifacts |
+| Bug Type                  | Tier | Process                                                                 |
+| ------------------------- | ---- | ----------------------------------------------------------------------- |
+| Typo, color, link         | 1    | Report → /implement → /qa → /ship                                       |
+| Component-level bug       | 2    | Report → /plan → /review-plan → /implement → /qa → /ship                |
+| Mystery / complex         | 3    | Report → /investigate → /plan → /review-plan → /implement → /qa → /ship |
+| Production-down emergency | 4    | Quick fix → manual deploy → write retrospective artifacts               |
 
 **Slash commands used:**
 

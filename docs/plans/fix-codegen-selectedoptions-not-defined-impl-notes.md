@@ -9,10 +9,10 @@
 
 ## Files changed
 
-| File | Change | Reason |
-|------|--------|--------|
+| File                                               | Change                                             | Reason                                                                                                                                                |
+| -------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app/routes/($locale).products.$productHandle.jsx` | Added one line to `PRODUCT_QUERY` operation header | Declares `$selectedOptions: [SelectedOptionInput!]!` so the GraphQL operation signature matches the variable used via the fragment spread at line 482 |
-| `storefrontapi.generated.d.ts` | Regenerated automatically by `npm run build` | No hand-edits; codegen ran cleanly and produced a clean build |
+| `storefrontapi.generated.d.ts`                     | Regenerated automatically by `npm run build`       | No hand-edits; codegen ran cleanly and produced a clean build                                                                                         |
 
 ### Exact change in `app/routes/($locale).products.$productHandle.jsx`
 

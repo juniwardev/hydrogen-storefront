@@ -50,6 +50,7 @@
 ```
 
 Confirmed the 6 new cases are **not** smoke tests — they assert exact string equality:
+
 - Truthy `checkoutUrl` (primary and `cartReset: true` retry variant) → byte-for-byte match with today's healthy copy (`"Added to your assistant cart — checkout here."` / `"Started a new cart and added the item — checkout here."`).
 - Falsy `checkoutUrl` (`undefined`, `null`, `''`) → exact fallback string match **and** `assert.ok(!reply.includes('checkout here'))`. The empty-string case is the sharpest edge case, since `normalizeCheckout`/`normalizeCart` use `?? undefined`, which does not collapse `''` — this case would have failed under the pre-fix hardcoded-string behavior.
 
@@ -91,7 +92,15 @@ $ npm run format:check 2>&1 | grep -i "assistant-reply\|api.assistant\|package.j
 5. **Checkout link rendered:** `Go to checkout →`, `href="https://ashford-quantum.myshopify.com/cart/c/hWNEWzJg8CWtxFGvBpI1vnrc?key=c3c2a86e893867c390793e9a4b00daf8"` — a real, well-formed cart/checkout URL (not a placeholder or empty string).
 6. Captured the raw POST response body via Playwright's network inspector:
    ```json
-   {"reply":"Added to your assistant cart — checkout here.","cart":{"id":"gid://shopify/Cart/hWNEWzJg8CWtxFGvBpI1vnrc?key=...","totalAmount":{"amount":"749.95","currencyCode":"USD"},"lineCount":1,"checkoutUrl":"https://ashford-quantum.myshopify.com/cart/c/..."}}
+   {
+     "reply": "Added to your assistant cart — checkout here.",
+     "cart": {
+       "id": "gid://shopify/Cart/hWNEWzJg8CWtxFGvBpI1vnrc?key=...",
+       "totalAmount": {"amount": "749.95", "currencyCode": "USD"},
+       "lineCount": 1,
+       "checkoutUrl": "https://ashford-quantum.myshopify.com/cart/c/..."
+     }
+   }
    ```
    This is direct live confirmation that `reply` and `cart.checkoutUrl` are both present and non-empty in the same payload — the exact invariant the fix establishes.
 7. Screenshot: `docs/qa/fix-assistant-checkout-null-dangling-cta-healthy-path.png` — shows the reply bubble and the working "Go to checkout →" link rendered together cleanly, no layout issues.
@@ -128,6 +137,7 @@ $ git diff --stat
 ```
 
 Confirmed:
+
 - `app/components/ChatAssistant.jsx` is **absent** from the diff — not modified. Its link-gating logic (`{cart.checkoutUrl && (<a>...</a>)}`) is unchanged and still correctly gates the "Go to checkout →" anchor.
 - Cart/checkout logic (`createCheckout`, `normalizeCheckout`, `normalizeCart`) is **not** modified — no changes appear in `app/lib/mcp.server.js` or `app/lib/mcp-normalize.js` in the diff.
 - Only the two new files (`assistant-reply.js`, `assistant-reply.test.js`), the route, and `package.json`'s `test:unit` script line were touched, matching the plan's affected-files table exactly.
@@ -136,15 +146,15 @@ Confirmed:
 
 ## 5. Regression matrix
 
-| Area | Result | Method |
-| :--- | :--- | :--- |
-| Healthy checkout path (CTA unchanged) | PASS — byte-for-byte identical reply, working link | Live (Playwright) |
-| Normal add-to-cart reply | PASS — reads naturally, cart summary (1 item · $749.95) renders correctly | Live (Playwright) |
-| Stale-cart retry variant reply wording | Unit-pinned only (not live-forceable — cartId held in component state with no external injection point) | Unit test (`assistant-reply.test.js` cases 2, 4) |
-| Reply/link agreement | PASS (healthy, live) / unit-pinned (no-URL) | Live + unit |
-| SSR/hydration clean on assistant surface | PASS — 0 assistant-related console errors/warnings across page load, panel open, search, and add-to-cart | Live (Playwright console capture) |
-| Analytics.ProductView variantId intact | Not applicable to this diff — `ChatAssistant.jsx` does not render `Analytics.ProductView` and is untouched by this fix; the product-page usage (`($locale).products.$productHandle.jsx:189`) is outside this diff's surface and unaffected | Static confirmation (grep + diff) |
-| Other intents unaffected (`search`, `default`) | PASS — `search` intent tested live, returned 8 products with no CTA-related text; `composeAddReply` import used only inside the `add` case per code read | Live + static |
+| Area                                           | Result                                                                                                                                                                                                                                     | Method                                           |
+| :--------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------- |
+| Healthy checkout path (CTA unchanged)          | PASS — byte-for-byte identical reply, working link                                                                                                                                                                                         | Live (Playwright)                                |
+| Normal add-to-cart reply                       | PASS — reads naturally, cart summary (1 item · $749.95) renders correctly                                                                                                                                                                  | Live (Playwright)                                |
+| Stale-cart retry variant reply wording         | Unit-pinned only (not live-forceable — cartId held in component state with no external injection point)                                                                                                                                    | Unit test (`assistant-reply.test.js` cases 2, 4) |
+| Reply/link agreement                           | PASS (healthy, live) / unit-pinned (no-URL)                                                                                                                                                                                                | Live + unit                                      |
+| SSR/hydration clean on assistant surface       | PASS — 0 assistant-related console errors/warnings across page load, panel open, search, and add-to-cart                                                                                                                                   | Live (Playwright console capture)                |
+| Analytics.ProductView variantId intact         | Not applicable to this diff — `ChatAssistant.jsx` does not render `Analytics.ProductView` and is untouched by this fix; the product-page usage (`($locale).products.$productHandle.jsx:189`) is outside this diff's surface and unaffected | Static confirmation (grep + diff)                |
+| Other intents unaffected (`search`, `default`) | PASS — `search` intent tested live, returned 8 products with no CTA-related text; `composeAddReply` import used only inside the `add` case per code read                                                                                   | Live + static                                    |
 
 ---
 

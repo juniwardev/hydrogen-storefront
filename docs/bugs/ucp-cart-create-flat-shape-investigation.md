@@ -11,12 +11,14 @@
 **The UCP `create_cart` and `update_cart` success payloads are FLAT at `result.structuredContent`, with cart fields (`id`, `line_items`, `totals`, `continue_url`) at the top level — NOT nested under a `.cart` key.** The code at `app/lib/mcp.server.js` lines 386 and 441 incorrectly assumes a `.cart` key exists, reading `payload.cart ?? null`, which always evaluates to `null` on success because `payload.cart` is `undefined`. This causes the route action to treat every successful cart creation as a failure.
 
 **Empirical proof:** Live probe of `ashford-quantum.myshopify.com` (UCP public, no-auth mode) using `curl`:
+
 - `search_catalog` returned variant GID `gid://shopify/ProductVariant/49985859879160`.
 - `create_cart` with that variant succeeded, returning `result.isError: false`.
 - The response `result.structuredContent` contained `id: "gid://shopify/Cart/hWNEWlsFaRz4FHHRn5pk61vc?key=..."` (cart ID) **at the top level**, along with `line_items[]`, `currency`, `totals[]`, `continue_url` — all flat.
 - **No `result.structuredContent.cart` key existed** — the nested path the code assumes is absent.
 
 **Root-cause location:** `app/lib/mcp.server.js`:
+
 - Line 386 in `createCart()`: `cart: payload.cart ?? null,` — should be `cart: payload ?? null,`
 - Line 441 in `updateCart()`: `cart: payload.cart ?? null,` — should be `cart: payload ?? null,`
 - Lines 339–343 and 381–384: misleading comments claiming a nested `.cart` key based on "PROBED + Dev MCP" — but that probe was against the old `theme-evolution-os2-hydrogen` store where `create_cart` crashed upstream with `-32603`, so no successful response ever existed to observe; the nested shape was inferred from the Dev MCP schema docs, not live data.
@@ -44,6 +46,7 @@
 ### Live curl probe (2026-07-15, ashford-quantum.myshopify.com)
 
 **Step 1: `search_catalog` response** (truncated, showing product array):
+
 ```json
 {
   "result": {
@@ -64,9 +67,11 @@
   }
 }
 ```
+
 Extracted variant GID: `gid://shopify/ProductVariant/49985859879160`
 
 **Step 2: `create_cart` request** (mirror of the app's request shape):
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -83,7 +88,7 @@ Extracted variant GID: `gid://shopify/ProductVariant/49985859879160`
       "cart": {
         "line_items": [
           {
-            "item": { "id": "gid://shopify/ProductVariant/49985859879160" },
+            "item": {"id": "gid://shopify/ProductVariant/49985859879160"},
             "quantity": 1
           }
         ]
@@ -94,6 +99,7 @@ Extracted variant GID: `gid://shopify/ProductVariant/49985859879160`
 ```
 
 **Step 3: `create_cart` response** (key excerpt from `result.structuredContent`):
+
 ```json
 {
   "result": {
@@ -127,7 +133,8 @@ Extracted variant GID: `gid://shopify/ProductVariant/49985859879160`
 }
 ```
 
-**Analysis:** 
+**Analysis:**
+
 - `result.isError = false` → success.
 - `result.structuredContent.id` exists at the **top level** → cart is flat.
 - `result.structuredContent.cart` does **NOT exist** → the nested path the code assumes is absent.
@@ -136,6 +143,7 @@ Extracted variant GID: `gid://shopify/ProductVariant/49985859879160`
 ### Code evidence: `callTool()` returns raw `structuredContent`
 
 `app/lib/mcp.server.js`, lines 252–265:
+
 ```javascript
 let payload = result.structuredContent;
 if (!payload) {
@@ -157,6 +165,7 @@ return payload;  // ← This is the raw structuredContent
 ### Test fixture evidence: `normalizeCart()` expects flat input
 
 `app/lib/mcp-normalize.test.js`, lines 316–329:
+
 ```javascript
 const rawCart = {
   id: 'gid://shopify/Cart/hWNDolz1',
@@ -172,6 +181,7 @@ The test passes `rawCart` directly to `normalizeCart(rawCart)` at line 332. The 
 ### `createCheckout()` comparison: gets it right
 
 `app/lib/mcp.server.js`, lines 505–510:
+
 ```javascript
 const payload = await callTool(callOpts);
 // Success: checkout fields are FLAT at structuredContent (id, status,
@@ -196,18 +206,22 @@ The comment **incorrectly states** "unlike the cart tools, which nest under a .c
 ### High-level strategy
 
 1. **Fix the response-shape assumption in `createCart()`** (`app/lib/mcp.server.js`, line 386):
+
    - Change `cart: payload.cart ?? null,` to `cart: payload ?? null,`
    - The entire `payload` IS the cart object; there is no `.cart` sub-key to unwrap.
 
 2. **Fix the identical logic in `updateCart()`** (`app/lib/mcp.server.js`, line 441):
+
    - Same change: `cart: payload.cart ?? null,` → `cart: payload ?? null,`
 
 3. **Correct the misleading comments** at lines 339–343 and 381–384:
+
    - Remove the claim that cart is "nested at `structuredContent.cart`".
    - Clarify that the cart object is flat, matching `search_catalog` and `create_checkout`.
    - Note that the old comment was based on an inference from Dev MCP docs, not live observation (the old store crashed before a successful response was possible).
 
 4. **Add unit tests for `createCart()` and `updateCart()`** to `app/lib/mcp.server.test.js`:
+
    - Verify that a successful `create_cart` response (flat cart payload) returns `{cart: flatCartObject, messages: []}` — not `{cart: null, ...}`.
    - Verify that `update_cart` behaves identically.
    - Add error-path tests (tool_error with invalid_cart_id) to ensure `messages[]` is correctly surfaced.
@@ -229,26 +243,31 @@ The comment **incorrectly states** "unlike the cart tools, which nest under a .c
 ## Regression risk areas
 
 1. **`updateCart()` path** (`app/lib/mcp.server.js`, lines 412–444):
+
    - Currently broken the same way as `createCart()`.
    - The route action calls `updateCart()` at line 156 when a `cartId` is present.
    - Any prior code relying on `result.cart` from `updateCart()` is already receiving `null` and silently failing. The fix will surface real cart objects instead of `null`, which is correct but could expose other bugs if downstream code doesn't handle cart objects properly.
    - **Mitigation:** The route action's usage at line 163 (`normalizeCart(result.cart)`) is already correct for flat payloads.
 
 2. **`createCheckout()` edge cases** (`app/lib/mcp.server.js`, lines 477–512):
+
    - The comment at lines 505–507 claims cart tools are nested while checkout is flat — this is now proven wrong.
    - If any other code incorrectly assumes cart nesting, fixing `createCart()` might expose those assumptions.
    - The route action's usage at line 189 (`normalizeCheckout(checkoutResult.checkout)`) is already correct.
 
 3. **Test-coverage gap** (`app/lib/mcp.server.test.js`):
+
    - `createCart()` and `updateCart()` have **zero unit tests**.
    - This gap allowed the bug to ship. The fix must include tests to prevent recurrence.
 
 4. **Stale-cart retry logic** (`app/routes/($locale).api.assistant.jsx`, lines 197–249):
+
    - On cart_id errors (invalid/stale cart), the route clears the cartId and retries with `createCart()`.
    - Currently, the retry always returns `{cart: null, ...}`, so it also surfaces an error (double failure).
    - Once the fix is in place, the retry will correctly return a fresh cart, and the `cartReset: true` flag will work as designed.
 
 5. **`messages[]` handling**:
+
    - Both `createCart()` and `updateCart()` return `messages: payload.messages ?? []`.
    - The route's error check at line 164 (`if (!cart)`) assumes the absence of a cart means an error, but business errors also include `messages[]`.
    - Currently, business errors throw a `tool_error` exception (caught at line 197), so `messages[]` from the successful path is not inspected.

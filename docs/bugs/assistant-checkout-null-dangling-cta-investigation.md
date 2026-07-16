@@ -15,17 +15,20 @@ The assistant reply composition in `app/routes/($locale).api.assistant.jsx` (lin
 ## Mechanism
 
 1. **Route response composition** (`app/routes/($locale).api.assistant.jsx:175–196`, :226–245):
+
    - Line 175: `const reply = 'Added to your assistant cart — checkout here.';` — hardcoded, unconditional.
    - Lines 180–182: If `cart.checkoutUrl` exists, return immediately with that URL.
    - Lines 184–196: If cart has no URL, fall back to `createCheckout()`. After the `fix-create-checkout-soft-error-gap` fix, when `createCheckout` returns a soft-error response, `checkoutResult.checkout` is `null`. Line 195 spreads the cart object with `checkoutUrl: checkout?.checkoutUrl`, which evaluates to `checkoutUrl: undefined` (since `null?.checkoutUrl` yields `undefined`).
    - Result: the response JSON contains `{reply: "...checkout here.", cart: {..., checkoutUrl: undefined}}`.
 
 2. **Frontend reply rendering** (`app/components/ChatAssistant.jsx:275–296`):
+
    - Line 292–295: Renders the `reply` field unconditionally: `{reply && (<div>{reply}</div>)}`. This renders "Added to your assistant cart — checkout here." as plain text.
    - Line 331–356: Renders the checkout link **only if** `cart.checkoutUrl` is truthy (line 345: `{cart.checkoutUrl && (<a href=...>`).
    - Result: when `checkoutUrl` is `undefined`, the text "checkout here" remains visible but no hyperlink element is rendered, creating a dangling CTA.
 
 3. **State enumeration — paths to dangling CTA**:
+
    - **Path A (primary):** Cart's `continue_url` is absent → `createCheckout()` returns soft-error (`checkout: null`) → `checkoutUrl` becomes `undefined`. Reply says "checkout here" but link does not render.
    - **Path B (variant):** Cart's `continue_url` is absent → `createCheckout()` returns a checkout object with no `continue_url` field (or `continue_url: null`) → `normalizeCheckout` (line 241 of `mcp-normalize.js`) assigns `checkoutUrl: undefined` → same result.
 
@@ -41,6 +44,7 @@ The assistant reply composition in `app/routes/($locale).api.assistant.jsx` (lin
 **File:** `app/routes/($locale).api.assistant.jsx`
 
 **Primary path (lines 175–196):**
+
 ```javascript
 const reply = 'Added to your assistant cart — checkout here.';
 
@@ -72,17 +76,21 @@ When `checkout` is `null`, `checkout?.checkoutUrl` evaluates to `undefined`. The
 **File:** `app/components/ChatAssistant.jsx`
 
 **Reply rendering (lines 292–295):**
+
 ```javascript
-{reply && (
-  <div className="max-w-[85%] bg-primary/5 text-primary rounded-2xl rounded-tl-sm px-3 py-2 text-sm">
-    {reply}
-  </div>
-)}
+{
+  reply && (
+    <div className="max-w-[85%] bg-primary/5 text-primary rounded-2xl rounded-tl-sm px-3 py-2 text-sm">
+      {reply}
+    </div>
+  );
+}
 ```
 
 This renders the `reply` text unconditionally. If the reply is "Added to your assistant cart — checkout here.", that text appears on screen regardless of whether `checkoutUrl` is defined.
 
 **Checkout link rendering (lines 331–356):**
+
 ```javascript
 {cart && (
   <div className="bg-primary/5 rounded-xl px-3 py-2 text-xs space-y-1">
@@ -118,12 +126,12 @@ The `<a>` element is gated on `{cart.checkoutUrl &&` (line 345). When `checkoutU
 
 ### Dangling CTA states enumerated
 
-| Condition | cart.checkoutUrl | checkout from fallback | checkoutUrl in response | Reply text | Link rendered? |
-|-----------|-----------------|------------------------|------------------------|------------|---|
-| Normal (cart URL) | `"https://..."` | (not called) | `"https://..."` | "checkout here" | ✓ Yes |
-| **Dangling A** | `null`/`undefined` | `null` | `undefined` | "checkout here" | ✗ No |
-| **Dangling B** | `null`/`undefined` | `{continue_url: null}` | `undefined` | "checkout here" | ✗ No |
-| **Dangling C** (retry) | `null`/`undefined` | `null` | `undefined` | "Started a new cart... checkout here" | ✗ No |
+| Condition              | cart.checkoutUrl   | checkout from fallback | checkoutUrl in response | Reply text                            | Link rendered? |
+| ---------------------- | ------------------ | ---------------------- | ----------------------- | ------------------------------------- | -------------- |
+| Normal (cart URL)      | `"https://..."`    | (not called)           | `"https://..."`         | "checkout here"                       | ✓ Yes          |
+| **Dangling A**         | `null`/`undefined` | `null`                 | `undefined`             | "checkout here"                       | ✗ No           |
+| **Dangling B**         | `null`/`undefined` | `{continue_url: null}` | `undefined`             | "checkout here"                       | ✗ No           |
+| **Dangling C** (retry) | `null`/`undefined` | `null`                 | `undefined`             | "Started a new cart... checkout here" | ✗ No           |
 
 ---
 
@@ -155,6 +163,7 @@ The fix should gate the "checkout here" reply on the availability of a usable ch
 4. **Frontend rendering** (`app/components/ChatAssistant.jsx:292–295`, :345–354): The component correctly gates the link. Verify that the reply text change (if any) is consistent with link availability in all scenarios.
 
 5. **Test coverage gap:** No existing tests cover the checkout fallback path or the dangling-CTA scenario. The fix should include test coverage for:
+
    - Reply composition when `cart.checkoutUrl` is falsy and `createCheckout` returns `null`.
    - Reply composition when `cart.checkoutUrl` is falsy and `createCheckout` returns a checkout with no `continue_url`.
    - Stale-cart retry variant of both above.

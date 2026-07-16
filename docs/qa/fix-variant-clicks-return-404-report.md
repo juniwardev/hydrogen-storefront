@@ -49,6 +49,7 @@ PASS WITH NITS
 - HTTP status for `/products/the-complete-snowboard/Color=Dawn` (the old bug path): **404** — confirms the path-segment form has no route, and the fix correctly avoids it
 
 Evidence:
+
 ```
 Dawn link href: /products/the-complete-snowboard?Color=Dawn
 Dawn href is query-param style: true
@@ -71,6 +72,7 @@ MCP used: Playwright
 - The loader request after click returns HTTP 200 with correct Remix data: `GET 200 /products/the-complete-snowboard?Color=Dawn&_data=routes/($locale).products.$productHandle`
 
 Evidence (swatch classes on Dawn page):
+
 ```
 Dawn link classes: leading-none py-1 border-b-[1.5px] cursor-pointer transition-all duration-200 border-primary/50
 Ice link classes: leading-none py-1 border-b-[1.5px] cursor-pointer transition-all duration-200 border-transparent opacity-50
@@ -91,6 +93,7 @@ The product `the-complete-snowboard` has 5 Color values (Ice, Dawn, Powder, Elec
 **Result: PASS**
 
 The `selectedVariant.id` differs between the default page and the Dawn variant page:
+
 - Default: `gid://shopify/ProductVariant/50239737331932`
 - Dawn: `gid://shopify/ProductVariant/50239737364700`
 
@@ -135,14 +138,17 @@ MCP used: Playwright
 
 - After navigating to `http://localhost:3003/products/the-complete-snowboard?Color=Dawn`, the canonical tag in page source is:
   ```html
-  <link rel="canonical" href="http://localhost:3003/products/the-complete-snowboard"/>
+  <link
+    rel="canonical"
+    href="http://localhost:3003/products/the-complete-snowboard"
+  />
   ```
 - The `og:url` meta tag similarly points to the base URL without query params.
 
 **Important note on plan requirement vs. actual behavior:** The plan (Section 7, step 4a) says to "Confirm the `href` attribute contains `?Color=Dawn`". However, inspection of the Hydrogen SDK source (`@shopify/hydrogen/dist/development/index.js` line 4777) reveals that `getSeoMeta` **explicitly strips query parameters** from the canonical URL:
 
 ```js
-const urlWithoutParams = content.split("?")[0];
+const urlWithoutParams = content.split('?')[0];
 ```
 
 This is intentional Hydrogen framework behavior — canonical tags always point to the base product URL, not the variant-specific URL. This is consistent with standard SEO practice (all variants canonicalize to the same product page). The `seoPayload.product` does receive `url: request.url` (which includes `?Color=Dawn`), but the framework strips the params before rendering the canonical.
@@ -158,12 +164,14 @@ MCP used: Playwright + curl (server-side source verification)
 **Result: PASS WITH PRE-EXISTING NITS**
 
 **Homepage:**
+
 - Navigated to `http://localhost:3003/`
 - Title: "Home | Hydrogen Demo Store"
 - HTTP 200
 - No new errors
 
 **Product page:**
+
 - 11 images loaded
 - Price `$949.95` rendered correctly
 - All swatch options rendered
@@ -172,11 +180,13 @@ MCP used: Playwright + curl (server-side source verification)
 **Console errors and warnings:**
 
 1. **`preserveControl` React prop warning** (3 occurrences on product page hydration):
+
    ```
    Warning: React does not recognize the `preserveControl` prop on a DOM element.
    If you intentionally want it to appear in the DOM as a custom attribute, spell it
    as lowercase `preservecontrol` instead.
    ```
+
    Source: `app/routes/($locale).products.$productHandle.jsx`, via `Link.jsx`
 
    This is a **pre-existing issue** explicitly documented in the implementation notes (OQ2, Section 6 of the plan) and the impl-notes file. The `preserveControl` prop was not introduced by this fix — it was already on the swatch `<Link>` before. The plan explicitly directs: "do not remove or fix it in this pass — it is recorded as an observation in OQ2 for a separate cleanup ticket." It is not a new regression.
@@ -217,11 +227,11 @@ None — this fix is a pure client-side URL-construction change with no server-s
 
 ## Screenshots
 
-| File | Description |
-|------|-------------|
-| `docs/qa/fix-variant-clicks-default-product.png` | Default product page at `/products/the-complete-snowboard` (Ice selected) |
-| `docs/qa/fix-variant-clicks-dawn-selected.png` | Product page at `?Color=Dawn` (Dawn selected, visually underlined) |
-| `docs/qa/fix-variant-clicks-locale-default.png` | Locale-prefixed page at `/en-ca/products/the-complete-snowboard` (Ice selected) |
+| File                                               | Description                                                                                   |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `docs/qa/fix-variant-clicks-default-product.png`   | Default product page at `/products/the-complete-snowboard` (Ice selected)                     |
+| `docs/qa/fix-variant-clicks-dawn-selected.png`     | Product page at `?Color=Dawn` (Dawn selected, visually underlined)                            |
+| `docs/qa/fix-variant-clicks-locale-default.png`    | Locale-prefixed page at `/en-ca/products/the-complete-snowboard` (Ice selected)               |
 | `docs/qa/fix-variant-clicks-locale-dawn-click.png` | Locale-prefixed page after clicking Dawn: `/en-ca/products/the-complete-snowboard?Color=Dawn` |
 
 ---

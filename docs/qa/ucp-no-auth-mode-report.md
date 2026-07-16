@@ -65,10 +65,12 @@ Exit code **0**. `dist/server/index.js` and client assets built successfully. Th
 **Live browser exercise (Playwright):** Opened the shopping assistant widget on the storefront, typed "show me snowboards", submitted. Result: the widget rendered the generic alert **"The shopping assistant is not configured."** — this is the expected, unchanged `mapMcpError` string for any `config_error` (confirmed by reading the route: `mapMcpError` is untouched, per plan §2/§4.1 design).
 
 **Server-side log (ground truth, via dev-server stdout):**
+
 ```
 [mcp] config_error reason=dev_storefront_password_missing tool=search_catalog
 ```
-This is the *correct* reason for the *actual* running configuration (`dev-cookie` default + `password` not reaching `context.env`, per the env note above) — the code is behaving exactly as designed for this misconfiguration. It also independently confirms: (a) the observability code fires in the live running server, not just under test; (b) no secret value (password, cookie, query) appears anywhere in the log output — confirmed by grepping the full dev-server log for the password string and for `Cookie:`, finding neither.
+
+This is the _correct_ reason for the _actual_ running configuration (`dev-cookie` default + `password` not reaching `context.env`, per the env note above) — the code is behaving exactly as designed for this misconfiguration. It also independently confirms: (a) the observability code fires in the live running server, not just under test; (b) no secret value (password, cookie, query) appears anywhere in the log output — confirmed by grepping the full dev-server log for the password string and for `Cookie:`, finding neither.
 
 **Conclusion on the live `none`-mode E2E path:** **BLOCKED-ON-ENV**, not passed and not failed. The running server never declares `UCP_AUTH_MODE=none` (it isn't set in `.env`, the file the Hydrogen CLI actually loads), so the assistant cannot be exercised through the browser in the `none` mode this feature exists to support. I did not modify env files to force this path, per instructions — see "Issues found" #1 for the recommended operator fix.
 
@@ -80,10 +82,10 @@ This is the *correct* reason for the *actual* running configuration (`dev-cookie
 
 Ran the exact cookieless `none`-mode MCP POST against the live `ashford-quantum.myshopify.com/api/ucp/mcp`, both with and without a `User-Agent` header:
 
-| Request | HTTP status |
-| :--- | :--- |
-| With `User-Agent: Mozilla/5.0 ... Chrome/120.0.0.0 Safari/537.36` | **200** |
-| Without any `User-Agent` header (`curl -A ""`, verified via `-v` that no `User-Agent:` line was sent) | **200** |
+| Request                                                                                               | HTTP status |
+| :---------------------------------------------------------------------------------------------------- | :---------- |
+| With `User-Agent: Mozilla/5.0 ... Chrome/120.0.0.0 Safari/537.36`                                     | **200**     |
+| Without any `User-Agent` header (`curl -A ""`, verified via `-v` that no `User-Agent:` line was sent) | **200**     |
 
 **AL-7 resolved:** the `User-Agent` is **not** required on the cookieless `none` MCP POST. This matches the code's own documentation exactly — `UCP_CLIENT_USER_AGENT`'s JSDoc in `const.js` already says the UA is "PRECAUTIONARY, not a proven requirement" and cites the same reasoning (the `/password` shim legs need a UA; the MCP POST itself, cookied or not, apparently does not). No code change is implied by this result — the plan explicitly says the code ships with the UA regardless of the probe outcome, and it does. This is a genuine, evidence-backed confirmation of a hypothesis the plan and impl-notes had explicitly left as "unconfirmed, deferred to QA."
 
@@ -120,6 +122,7 @@ No defects found in the actual code under test (`app/lib/const.js`, `app/lib/mcp
 [WARNING] Tried to prefetch /collections/frontpage but no routes matched.
 [ERROR] Failed to load resource: the server responded with a status of 401 () @ https://theme-evolution-os2-hydrogen.myshopify.com/api/unstable/graphql.json:0
 ```
+
 No React hydration warnings observed on any page.
 
 ## Network failures and slow responses
@@ -149,6 +152,7 @@ Everything in the actual code diff (`const.js`, `mcp.server.js`, `mcp.server.tes
 PASS WITH NITS (first pass, superseded — see second pass below)
 
 ---
+
 ---
 
 ## Second QA pass (2026-07-15)
@@ -168,6 +172,7 @@ UCP_AUTH_MODE=none
 ```
 
 Confirmed:
+
 - **`UCP_AUTH_MODE=none` is present** (line 13, its own line, own var).
 - **`PUBLIC_STORE_DOMAIN` and `PUBLIC_CHECKOUT_DOMAIN` both point at `ashford-quantum.myshopify.com`** — the checkout-domain mismatch from pass 1 is gone.
 - **Line 12 (`PUBLIC_CUSTOMER_ACCOUNT_API_URL`) is no longer concatenated** with the next var — each var now has its own line. Issue #3 (env hygiene) is resolved.
@@ -211,17 +216,19 @@ This is **not** a `config_error` — the auth-mode switch this feature implement
 - **`createCart({...})` (the wrapper the route actually calls): returns `{cart: null, messages: []}`** for that exact same successful call.
 
 **Root cause identified (pre-existing bug, NOT part of this feature's diff):** `createCart()` in `app/lib/mcp.server.js` does:
+
 ```js
 return {
   cart: payload.cart ?? null,
   messages: payload.messages ?? [],
 };
 ```
-This assumes the cart object is **nested** under a `.cart` key inside `structuredContent` (the function's own JSDoc says so explicitly: *"the cart object is nested at `structuredContent.cart`, NOT flat at top level — unlike search_catalog/create_checkout"*). But the live `ashford-quantum` store's actual `create_cart` response has the cart fields (`id`, `line_items`, `currency`, `totals`, `continue_url`, etc.) **flat at the top level of `structuredContent`** — there is no `.cart` key at all. So `payload.cart` is always `undefined` → `?? null` → the route's `if (!cart)` branch fires → the generic `tool_error` is returned to the browser, even though the underlying UCP call succeeded and a real, billable-if-checked-out cart now exists on the live store.
+
+This assumes the cart object is **nested** under a `.cart` key inside `structuredContent` (the function's own JSDoc says so explicitly: _"the cart object is nested at `structuredContent.cart`, NOT flat at top level — unlike search_catalog/create_checkout"_). But the live `ashford-quantum` store's actual `create_cart` response has the cart fields (`id`, `line_items`, `currency`, `totals`, `continue_url`, etc.) **flat at the top level of `structuredContent`** — there is no `.cart` key at all. So `payload.cart` is always `undefined` → `?? null` → the route's `if (!cart)` branch fires → the generic `tool_error` is returned to the browser, even though the underlying UCP call succeeded and a real, billable-if-checked-out cart now exists on the live store.
 
 **Confirmed via `git diff` that this logic is untouched by the `ucp-no-auth-mode` diff** — `createCart`'s return statement is identical before and after this feature; the diff only added the `authMode` parameter and threaded it into `callOpts`. `createCart` also has **zero unit test coverage** in `mcp.server.test.js` (confirmed via grep — no test references `createCart` or `create_cart`), which is why this shape mismatch was never caught by CI. This is a **newly surfaced, pre-existing defect** — it was unreachable during earlier QA passes because `config_error` always fired first (either the old dev-cookie/gated-store loop, or pass 1's env gap); now that `ucp-no-auth-mode` correctly unblocks reachability, this is the first time `create_cart` has actually succeeded far enough through the app to expose the mismatch.
 
-**Practical/side-effect note:** because the raw MCP call *does* succeed on every attempt, each failed "Add to cart" click in the assistant is silently creating a real, abandoned cart on the live `ashford-quantum` store (three were created during this QA session, expiring in 30 days per `expires_at`). This is a minor real-world cost of the bug, not of this feature.
+**Practical/side-effect note:** because the raw MCP call _does_ succeed on every attempt, each failed "Add to cart" click in the assistant is silently creating a real, abandoned cart on the live `ashford-quantum` store (three were created during this QA session, expiring in 30 days per `expires_at`). This is a minor real-world cost of the bug, not of this feature.
 
 **Answering the task's direct question — "is a real cart created?":** **Yes, upstream** (confirmed three times: twice via isolated Node probes calling the actual unmodified `callTool`/`createCart` functions, once via the earlier direct `curl` probe in pass 1's Architect-cited premise) — **but no, not as observed by an end user through the app**, because a separate, pre-existing bug in `createCart()`'s payload-shape assumption discards the successful result before it reaches the browser. Screenshot: `docs/qa/screenshots/ucp-no-auth-mode-pass2-cart-tool-error.png`.
 
@@ -248,7 +255,7 @@ Re-checked on a fresh navigation to `/` and to the product page: the Storefront 
 
 The feature under test — `ucp-no-auth-mode` — is now fully verified live, end-to-end, through the browser: `UCP_AUTH_MODE=none` is genuinely injected by the running server, `search_catalog` returns real products with no config error, the dev-cookie shim is never invoked (zero `Cookie`/`password` artifacts across the entire captured server log), and all three previously-blocked-on-env issues are closed. This is exactly what the plan set out to deliver, and it works.
 
-The add-to-cart path surfaced a real, high-severity, 100%-reproducible defect — but it lives in `createCart()`'s payload-shape assumption, a section of code this feature's diff does not touch (confirmed via `git diff`) and which the plan's own non-goals (§2) explicitly exclude ("changing the response-envelope... normalizer... untouched"). The underlying capability this feature was built to unlock — a public store accepting unauthenticated UCP calls — is proven to work (three independent confirmations of a real cart being created upstream). The fact that a *different*, pre-existing, untested function then discards that success is a serious bug worth immediate follow-up, but it is not a failure of `ucp-no-auth-mode` itself.
+The add-to-cart path surfaced a real, high-severity, 100%-reproducible defect — but it lives in `createCart()`'s payload-shape assumption, a section of code this feature's diff does not touch (confirmed via `git diff`) and which the plan's own non-goals (§2) explicitly exclude ("changing the response-envelope... normalizer... untouched"). The underlying capability this feature was built to unlock — a public store accepting unauthenticated UCP calls — is proven to work (three independent confirmations of a real cart being created upstream). The fact that a _different_, pre-existing, untested function then discards that success is a serious bug worth immediate follow-up, but it is not a failure of `ucp-no-auth-mode` itself.
 
 Given the severity and the fact that this was the specific "payoff" this pass was asked to verify, this is flagged as loudly as possible above (severity HIGH, explicit recommendation for an immediate new bug-fix cycle) rather than being downgraded to a footnote. The `ucp-no-auth-mode` feature itself, on its own merits and scope, passes cleanly with no remaining nits from pass 1 (all closed) and one newly-discovered out-of-scope defect that must not be lost — hence `PASS WITH NITS`, carrying forward the same token as pass 1 but for a different reason: pass 1's nits are now closed, and a new, more serious one (out of this diff's scope) has taken their place.
 
