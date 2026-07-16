@@ -92,6 +92,7 @@ dist/
 public/build/
 .env
 .env.local
+.env.backup*
 .shopify/
 .mf
 .react-router
