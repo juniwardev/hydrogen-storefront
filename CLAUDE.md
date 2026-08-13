@@ -10,10 +10,10 @@ This project uses the Claude Squad workflow. Agents at `~/.claude/agents/` and s
 
 - **Framework:** Shopify Hydrogen (Remix-based SSR React)
 - **Language:** JavaScript (`.jsx`) with JSDoc annotations referencing generated TypeScript declarations (`storefrontapi.generated.d.ts`). Do NOT convert files to native TypeScript (`.tsx`) as drive-by work — that's a separate architectural decision.
-- **Storefront connection:** `theme-evolution-os2-hydrogen.myshopify.com` (separate dev store from the Liquid theme project at `theme-evolution-os2.myshopify.com`)
+- **Storefront connection:** `theme-evolution-os2-hydrogen2.myshopify.com` (the dev/deploy store — a development store, password-gated; superseded `theme-evolution-os2-hydrogen`, a client-transfer store whose GitHub integration wouldn't connect. Distinct from the Liquid theme project at `theme-evolution-os2.myshopify.com`.)
 - **Repo location:** `~/Projects/Shopify/hydrogen-storefront`
 - **State:** Greenfield-ish — generated via `npm create @shopify/hydrogen@latest`, with some early development already in place
-- **Deploy target:** Shopify Oxygen — storefront `ashford-quantum-hydrogen`, environment `production` (see "Deploy targets" section below)
+- **Deploy target:** Shopify Oxygen on a **development store** — storefront `theme-evolution-os2-hydrogen2` via GitHub CD, env `production` (login-gated dev/POC; see "Deploy targets" below)
 
 ---
 
@@ -44,28 +44,62 @@ If you find yourself wanting a script that doesn't exist (e.g., `typecheck`, `co
 
 ## Deploy targets
 
-**Target: Shopify Oxygen** (native Hydrogen hosting). Configured 2026-07-15.
+**Target: Shopify Oxygen** (native Hydrogen hosting) on a **development store**, via **GitHub continuous deployment**. Retargeted 2026-08-13 (previously `ashford-quantum` — see "Retired target" below).
 
-| Field               | Value                                                                                                            |
-| :------------------ | :--------------------------------------------------------------------------------------------------------------- |
-| Platform            | Shopify Oxygen                                                                                                   |
-| Store               | `ashford-quantum.myshopify.com` (Ashford Quantum Solutions)                                                      |
-| Hydrogen storefront | `ashford-quantum-hydrogen` (`gid://shopify/HydrogenStorefront/1000158766`)                                       |
-| Environment         | **Production** (handle `production`, tracks branch `main`)                                                       |
-| Production URL      | `https://ashford-quantum-hydrogen-bb6261bdb9884381da1b.o2.myshopify.dev` (private by default — see privacy note) |
-| Deploy command      | `npm run deploy` → `shopify hydrogen deploy --env production`                                                    |
+| Field               | Value                                                                                                                         |
+| :------------------ | :---------------------------------------------------------------------------------------------------------------------------- |
+| Platform            | Shopify Oxygen                                                                                                                |
+| Store               | `theme-evolution-os2-hydrogen2.myshopify.com` — **development store** (Plus plan _emulated_), **storefront password ON**      |
+| Hydrogen storefront | `theme-evolution-os2-hydrogen2` (GID: read from the store admin)                                                              |
+| Environment         | `production` (handle `production`, tracks branch `main`) — carries the dev-cookie shim; see "Auth mode" below                 |
+| Deploy mechanism    | **GitHub CD** — push to `main` auto-deploys. Manual fallback: `shopify hydrogen deploy --env production`                      |
+| Deployment URL      | Auto-generated `…o2.myshopify.dev` (read from the dashboard) — **always login-gated** (dev stores have no public environment) |
 
-### Deploy procedure
+### This is a dev-store POC — capability limits are permanent
 
-1. Ensure `main` is committed and green: `npm run lint`, `npm run build`, `npm run test:unit`.
-2. Run `npm run deploy` (or `shopify hydrogen deploy --env production`). **Requires an interactive terminal** — the CLI asks a `Continue?` confirmation and has no `--yes`/non-interactive flag, so it CANNOT run headlessly (it errors with "Failed to prompt"). Answer `yes`.
-3. Verify at the Production URL (see privacy note).
+`theme-evolution-os2-hydrogen2` is a **development store**, so by Shopify's rules (not a config choice): the **storefront password page can't be removed**, it **can't process real transactions** (Bogus/test gateways only), and it has **no public Oxygen environment** (the deployment URL always requires a store login). The Plus plan is only _emulated_ for feature testing and lifts none of these. Consequences for the deployed app:
+
+- Base storefront (home / collections / PDP / native cart) renders fine — the Storefront GraphQL token bypasses the password.
+- The assistant does **search only**; **add-to-cart degrades gracefully** — the agentic-commerce channel can't provision on a gated dev store. This is expected, not a regression. (A Plus dev store _might_ expose that channel directly — worth a one-time probe post-deploy, but nothing here depends on it.)
+
+### Auth mode + the dev-cookie rule (reframed 2026-08-13, Option R)
+
+Because the store is password-gated, the assistant's `/api/mcp` calls need the DEV cookie shim: set **`UCP_AUTH_MODE=dev-cookie`** and **`DEV_STOREFRONT_PASSWORD`** in the deployed env.
+
+> **Rule (reframed):** `dev-cookie` / `DEV_STOREFRONT_PASSWORD` must **NEVER** be used against a **public** storefront — it is only for **password-gated dev/POC stores**. This **supersedes** the earlier wording ("never set `DEV_STOREFRONT_PASSWORD` in an env named `production`"), which assumed a public production store. With `ashford-quantum` retired, the sole target is a gated dev store that _structurally requires_ the shim, so the guarantee is now expressed in terms of **store visibility, not env name**. The intended auth for any future **public** storefront is still the (unimplemented) `signed` tier — do NOT ship `dev-cookie` there.
 
 ### Environment variables (Oxygen)
 
-Oxygen auto-provisions the standard store vars (read-only): `PUBLIC_STORE_DOMAIN`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN`, `PUBLIC_STOREFRONT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_URL`, `SESSION_SECRET`. This app additionally needs these **custom** vars, which are NOT auto-provisioned and must be set in Oxygen: `UCP_AUTH_MODE=none`, `PUBLIC_UCP_AGENT_PROFILE_URL`, `PUBLIC_CHECKOUT_DOMAIN`. **`DEV_STOREFRONT_PASSWORD` must NEVER be set in production** (it drives the DEV-ONLY cookie shim). Push local `.env` with `shopify hydrogen env push --env production` (interactive). Oxygen deployments are **immutable** — env-var changes only take effect on the next deploy.
+Oxygen auto-provisions this store's standard vars (read-only): `PUBLIC_STORE_DOMAIN`, `PUBLIC_STOREFRONT_API_TOKEN`, `PRIVATE_STOREFRONT_API_TOKEN`, `PUBLIC_STOREFRONT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_CLIENT_ID`, `PUBLIC_CUSTOMER_ACCOUNT_API_URL`, `SESSION_SECRET`. This app additionally needs these **custom** vars: `UCP_AUTH_MODE=dev-cookie`, `DEV_STOREFRONT_PASSWORD` (this store's storefront password — the shim; see the rule above), `PUBLIC_UCP_AGENT_PROFILE_URL`, and `PUBLIC_CHECKOUT_DOMAIN=theme-evolution-os2-hydrogen2.myshopify.com`. Set them in the **dashboard** (Environments → Variables) — no local relink needed — or via `shopify hydrogen env push --env production` (interactive; it echoes values, so run it privately and never paste the output). Oxygen deployments are **immutable** — env-var changes take effect on the **next** deploy.
 
-### Verification-URL privacy note
+### Deploy procedure (GitHub CD)
+
+1. Ensure `main` is committed and green: `npm run lint`, `npm run build`, `npm run test:unit`.
+2. Confirm the env vars above are set on the `main`-mapped environment.
+3. Push to `main` (or "Redeploy" in the dashboard). Oxygen builds (`npm run build`) and deploys automatically.
+4. Verify at the (login-gated) deployment URL: assistant `search_catalog` returns real products; no `[mcp] config_error` line; add-to-cart degrades gracefully.
+
+**Manual fallback** (if CD is unavailable): `shopify hydrogen link` → `shopify hydrogen deploy --env production` (add `-f`/`-t` for non-interactive; see the CLI-flags note in "Run locally").
+
+### Access note (dev-store URL privacy)
+
+The deployment URL is **always login-gated** — dev stores have **no public environment**, so there is no "make Public" toggle (unlike a paid plan's public-env allowance). Verify while logged into the store or via an authenticated browser session. This is acceptable and intended for a dev/POC target.
+
+### Rollback
+
+Oxygen retains prior deployments (immutable). Roll back by promoting a previous deployment in the Hydrogen channel (Storefront settings → Deployments), or by re-deploying/reverting the commit `main` tracks.
+
+### `/ship`
+
+`/ship` runs via the project-scoped DevOps agent (`.claude/agents/devops.md`). With GitHub CD now wired, the normal deploy is a `main` push; `/ship` covers the pre-deploy gate (`lint` / `build` / `test:unit`) and post-deploy verification against the login-gated URL, plus the manual-deploy fallback (which can run headless via `-f`/`--token`).
+
+### Retired target
+
+`ashford-quantum.myshopify.com` / storefront `ashford-quantum-hydrogen` (`gid://shopify/HydrogenStorefront/1000158766`) was the deploy target 2026-07-15 → 2026-08-13 and is now **retired** — not deployed to. Historical record: `docs/qa/oxygen-deploy-target-deploy.md`. Note the trade-off it leaves: ashford was the only _public, transaction-capable, agentic-channel-provisioned_ target, so retiring it means the project has **no public production storefront** and assistant cart/checkout is unavailable by design (search-only). Reviving public commerce would require a non-dev store and reintroducing `UCP_AUTH_MODE=none` (+ the `signed` tier for real prod auth).
+
+---
+
+## Verification-URL privacy note
 
 Oxygen environments are **private by default** — the URL 302-redirects to Shopify login. On the Basic plan you get **1 public** environment. To make the storefront publicly reachable: Storefront settings → Environments and variables → Production → URL privacy → **Public**. Until then, verify while logged into the store or via an authenticated browser session.
 
@@ -75,7 +109,7 @@ Oxygen retains prior deployments. Roll back by promoting a previous deployment i
 
 ### `/ship`
 
-`/ship` is operational via the project-scoped DevOps agent (`.claude/agents/devops.md`). GitHub continuous deployment is intentionally NOT wired, and the `shopify hydrogen deploy` confirmation is interactive, so `/ship` runs pre-deploy verification and post-deploy checks while the deploy confirmation itself is operator-run.
+`/ship` is operational via the project-scoped DevOps agent (`.claude/agents/devops.md`). GitHub continuous deployment is intentionally NOT wired, and the `shopify hydrogen deploy` confirmation is interactive **by default** — though `-f/--force` plus `-t/--token` allow a headless deploy once a token is provisioned — so today `/ship` runs pre-deploy verification and post-deploy checks while the deploy confirmation itself is operator-run.
 
 ---
 

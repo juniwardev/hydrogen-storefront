@@ -1,5 +1,14 @@
 # Runbook: Switching the Hydrogen storefront between stores
 
+> **⚠️ SUPERSEDED (2026-08-13).** The project is now **single-target**: it deploys to the
+> `theme-evolution-os2-hydrogen2` **development store** via **GitHub CD**, and `ashford-quantum`
+> is **retired**. The two-store switch described below no longer applies. This file is kept as an
+> **audit record** of the old `ashford-quantum` ⇄ `theme-evolution-os2-hydrogen` setup and the
+> `UCP_AUTH_MODE` reasoning. For the current deploy target, auth mode, and env vars, see
+> `CLAUDE.md` → "## Deploy targets" and `docs/plans/deploy-poc-dev-store.md`. (The gated store
+> named below, `theme-evolution-os2-hydrogen`, was a client-transfer store; it has been replaced
+> by `theme-evolution-os2-hydrogen2`.)
+
 **Purpose:** Flip local development between the two Shopify stores this storefront
 targets, without losing env keys or misreading expected capability differences.
 
